@@ -32,6 +32,12 @@ class PawnOwnerState
 
 	proto native int	GetSimulationTimestamp();
 	
+	proto native void	SetPhysicsTimeStamp(int value);
+	proto native int	GetPhysicsTimeStamp();
+	
+	proto native void	SetWaterTime(float value);
+	proto native float	GetWaterTime();
+	
 	protected event void Write(PawnStateWriter ctx)
 	{
 	}
@@ -135,7 +141,10 @@ enum NetworkMoveStrategy
 	NONE,
 
 	//! Places the move as the last input inside 'NetworkInput' and simulates with the input message
-	LATEST
+	LATEST,
+
+	//! Sends over a fixed buffer of moves and re-simulates the physics steps on correction as a static scene
+	PHYSICS,
 };
 
 /**

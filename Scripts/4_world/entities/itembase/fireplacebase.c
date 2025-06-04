@@ -43,7 +43,7 @@ class FireplaceBase : ItemBase
 	const float PARAM_OUTDOOR_FIRE_TEMPERATURE		= 500;		//! maximum fireplace temperature of an outdoor fire (degree Celsius)
 	const float PARAM_MIN_FIRE_TEMPERATURE 			= 30;		//! minimum fireplace temperature under which the fireplace is inactive (degree Celsius)
 	const float	PARAM_TEMPERATURE_INCREASE 			= 10;		//! how much will temperature increase when fireplace is burning (degree Celsius per second)
-	const float	PARAM_TEMPERATURE_DECREASE 			= 10;		//! how much will temperature decrease when fireplace is cooling (degree Celsius per second)
+	const float	PARAM_TEMPERATURE_DECREASE 			= 3;		//! how much will temperature decrease when fireplace is cooling (degree Celsius per second)
 	const float	PARAM_MAX_WET_TO_IGNITE 			= 0.2;		//! maximum wetness value when the fireplace can be ignited
 	const float PARAM_MIN_TEMP_TO_REIGNITE 			= 30;		//! minimum fireplace temperature under which the fireplace can be reignited using air only (degree Celsius)
 	const float	PARAM_IGNITE_RAIN_THRESHOLD 		= 0.1;		//! maximum rain value when the fireplace can be ignited
@@ -197,10 +197,11 @@ class FireplaceBase : ItemBase
 	typename ATTACHMENT_TRIPOD 			= Tripod;
 	typename ATTACHMENT_COOKINGSTAND	= CookingStand;
 	typename ATTACHMENT_STONES 			= Stone;
-	typename ATTACHMENT_COOKING_POT 	= Pot;
-	typename ATTACHMENT_FRYING_PAN 		= FryingPan;
-	typename ATTACHMENT_CAULDRON	 	= Cauldron;
+	typename ATTACHMENT_COOKING_POT 	= Pot; //'IsCookware' used instead
+	typename ATTACHMENT_FRYING_PAN 		= FryingPan; //'IsCookware' used instead
+	typename ATTACHMENT_CAULDRON	 	= Cauldron; //'IsCookware' used instead
 	//
+	protected const float PLACEMENT_HEIGHT_LIMIT = 0.1; // Y coord placement limit - this is important when server has collision checks disabled
 	const string OBJECT_CLUTTER_CUTTER 	= "ClutterCutterFireplace";
 	protected Object m_ClutterCutter;
 	
@@ -236,19 +237,19 @@ class FireplaceBase : ItemBase
 		//STATIC: define kindling types
 		if (!m_FireConsumableTypes)
 		{
-			m_FireConsumableTypes = new ref map<typename, ref FireConsumableType>();
-			m_FireConsumableTypes.Insert(ATTACHMENT_RAGS, 				new FireConsumableType(ATTACHMENT_RAGS, 				14, 	true,	"Rags"));
-			m_FireConsumableTypes.Insert(ATTACHMENT_BANDAGE, 			new FireConsumableType(ATTACHMENT_BANDAGE, 				14, 	true,	"MedicalBandage"));
-			m_FireConsumableTypes.Insert(ATTACHMENT_BOOK, 				new FireConsumableType(ATTACHMENT_BOOK, 				36, 	true,	"Book"));
-			m_FireConsumableTypes.Insert(ATTACHMENT_BARK_OAK, 			new FireConsumableType(ATTACHMENT_BARK_OAK, 			20, 	true,	"OakBark"));
-			m_FireConsumableTypes.Insert(ATTACHMENT_BARK_BIRCH, 		new FireConsumableType(ATTACHMENT_BARK_BIRCH, 			14, 	true,	"BirchBark"));
-			m_FireConsumableTypes.Insert(ATTACHMENT_PAPER, 				new FireConsumableType(ATTACHMENT_PAPER, 				10, 	true,	"Paper"));
-			m_FireConsumableTypes.Insert(ATTACHMENT_GIFTWRAP, 			new FireConsumableType(ATTACHMENT_GIFTWRAP, 			10, 	true,	"GiftWrapPaper"));
-			m_FireConsumableTypes.Insert(ATTACHMENT_PUNCHEDCARD,		new FireConsumableType(ATTACHMENT_PUNCHEDCARD, 			10, 	true,	"PunchedCard"));
-			m_FireConsumableTypes.Insert(ATTACHMENT_EYEMASK_COLORBASE,	new FireConsumableType(ATTACHMENT_EYEMASK_COLORBASE, 	10, 	true,	"EyeMask_ColorBase"));
+			m_FireConsumableTypes = new map<typename, ref FireConsumableType>();
+			m_FireConsumableTypes.Insert(ATTACHMENT_RAGS, 				new FireConsumableType(ATTACHMENT_RAGS, 				8, 	true,	"Rags"));
+			m_FireConsumableTypes.Insert(ATTACHMENT_BANDAGE, 			new FireConsumableType(ATTACHMENT_BANDAGE, 				8, 	true,	"MedicalBandage"));
+			m_FireConsumableTypes.Insert(ATTACHMENT_BOOK, 				new FireConsumableType(ATTACHMENT_BOOK, 				20, 	true,	"Book"));
+			m_FireConsumableTypes.Insert(ATTACHMENT_BARK_OAK, 			new FireConsumableType(ATTACHMENT_BARK_OAK, 			10, 	true,	"OakBark"));
+			m_FireConsumableTypes.Insert(ATTACHMENT_BARK_BIRCH, 		new FireConsumableType(ATTACHMENT_BARK_BIRCH, 			8, 	true,	"BirchBark"));
+			m_FireConsumableTypes.Insert(ATTACHMENT_PAPER, 				new FireConsumableType(ATTACHMENT_PAPER, 				5, 	true,	"Paper"));
+			m_FireConsumableTypes.Insert(ATTACHMENT_GIFTWRAP, 			new FireConsumableType(ATTACHMENT_GIFTWRAP, 			5, 	true,	"GiftWrapPaper"));
+			m_FireConsumableTypes.Insert(ATTACHMENT_PUNCHEDCARD,		new FireConsumableType(ATTACHMENT_PUNCHEDCARD, 			5, 	true,	"PunchedCard"));
+			m_FireConsumableTypes.Insert(ATTACHMENT_EYEMASK_COLORBASE,	new FireConsumableType(ATTACHMENT_EYEMASK_COLORBASE, 	5, 	true,	"EyeMask_ColorBase"));
 			
 			//define fuel types
-			m_FireConsumableTypes.Insert(ATTACHMENT_STICKS, 		new FireConsumableType(ATTACHMENT_STICKS, 		40, 	false,	"WoodenStick"));
+			m_FireConsumableTypes.Insert(ATTACHMENT_STICKS, 		new FireConsumableType(ATTACHMENT_STICKS, 		30, 	false,	"WoodenStick"));
 			m_FireConsumableTypes.Insert(ATTACHMENT_FIREWOOD, 		new FireConsumableType(ATTACHMENT_FIREWOOD, 	100, 	false,	"Firewood"));
 		}
 
@@ -268,8 +269,6 @@ class FireplaceBase : ItemBase
 		RegisterNetSyncVariableBool("m_HasStoneCircle");
 		RegisterNetSyncVariableBool("m_RoofAbove");
 		RegisterNetSyncVariableInt("m_FireState", FireplaceFireState.NO_FIRE, FireplaceFireState.COUNT);
-		RegisterNetSyncVariableBool("m_IsSoundSynchRemote");
-		RegisterNetSyncVariableBool("m_IsPlaceSound");
 		RegisterNetSyncVariableBool("m_NoIgnite");
 		
 		m_HalfExtents = vector.Zero;
@@ -277,14 +276,15 @@ class FireplaceBase : ItemBase
 		m_SurfaceUnderWetnessModifier = 0.0;
 		
 		m_UTSSettings 						= new UniversalTemperatureSourceSettings();
-		m_UTSSettings.m_AffectStat			= true;
 		m_UTSSettings.m_ManualUpdate		= true;
-		m_UTSSettings.m_TemperatureMin		= 0;
-		m_UTSSettings.m_TemperatureMax		= PARAM_NORMAL_FIRE_TEMPERATURE;
 		m_UTSSettings.m_TemperatureItemCap 	= GameConstants.ITEM_TEMPERATURE_NEUTRAL_ZONE_MIDDLE;
 		m_UTSSettings.m_TemperatureCap		= PARAM_MAX_TRANSFERED_TEMPERATURE;
 		m_UTSSettings.m_RangeFull			= PARAM_FULL_HEAT_RADIUS;
 		m_UTSSettings.m_RangeMax			= PARAM_HEAT_RADIUS;
+		
+		m_UTSSettings.m_EnableOnTemperatureControl		= true;
+		m_UTSSettings.m_ActiveTemperatureThreshold 		= 250.0;
+		m_UTSSettings.m_InactiveTemperatureThreshold 	= 475.0;
 		
 		m_UnderObjectDecalSpawnSettings		= new UnderObjectDecalSpawnSettings();
 		m_UnderObjectDecalSpawnSettings.m_RandomizeRotation = true;
@@ -332,14 +332,8 @@ class FireplaceBase : ItemBase
 		super.EEItemAttached(item, slot_name);
 		
 		//cookware
-		switch (item.Type())
-		{
-		case ATTACHMENT_CAULDRON:
-		case ATTACHMENT_COOKING_POT:
-		case ATTACHMENT_FRYING_PAN:
+		if (item.IsCookware())
 			SetCookingEquipment(ItemBase.Cast(item));
-		break;
-		}
 	}
 
 	override void OnItemLocationChanged(EntityAI old_owner, EntityAI new_owner) 
@@ -369,6 +363,8 @@ class FireplaceBase : ItemBase
 				m_UnderObjectDecalSpawnComponent.RemoveDecal();
 				m_UnderObjectDecalSpawnComponent = null;
 			}
+			
+			DestroyAreaDamage();
 		}
 		
 		m_SurfaceUnderWetnessModifier = GetSurfaceWetnessOnHeatModifier(this);
@@ -382,27 +378,20 @@ class FireplaceBase : ItemBase
 		case ATTACHMENT_COOKINGSTAND:
 			int slot = InventorySlots.GetSlotIdFromString("CookingEquipment");
 			EntityAI ent = GetInventory().FindAttachment(slot);
-			if (ent)
+			if (ent && ent.IsCookware())
 			{
-				switch (ent.Type())
+				vector direction = ent.GetDirection();
+				float dot = vector.Dot(direction, vector.Forward);
+				
+				float angle = Math.Acos(dot);	
+				if (direction[0] < 0)
 				{
-				case ATTACHMENT_COOKING_POT:
-				case ATTACHMENT_CAULDRON:
-				case ATTACHMENT_FRYING_PAN:
-					vector direction = ent.GetDirection();
-					float dot = vector.Dot(direction, vector.Forward);
-					
-					float angle = Math.Acos(dot);	
-					if (direction[0] < 0)
-					{
-						angle = -angle;
-					}
-			
-					float cos = Math.Cos(angle);
-					float sin = Math.Sin(angle);
-					GetInventory().DropEntityInBounds(InventoryMode.SERVER, this, ent, "2 0 2", angle, cos, sin);
-				break;
+					angle = -angle;
 				}
+		
+				float cos = Math.Cos(angle);
+				float sin = Math.Sin(angle);
+				GetInventory().DropEntityInBounds(InventoryMode.SERVER, this, ent, "2 0 2", angle, cos, sin);
 			}
 
 			attachment.Delete();
@@ -507,19 +496,14 @@ class FireplaceBase : ItemBase
 			}
 		}
 	}
-	
+		
 	override void OnVariablesSynchronized()
 	{
 		super.OnVariablesSynchronized();
 
 		RefreshFireplaceVisuals();
 		RefreshFireParticlesAndSounds(false);
-		
-		if (IsPlaceSound())
-		{
-			PlayPlaceSound();
-		}
-		
+				
 		if (IsBaseFireplace() && !IsOven())
 		{
 			if (m_IsBurning && !m_AreaDamage)
@@ -577,9 +561,15 @@ class FireplaceBase : ItemBase
 		return true;
 	}
 	
+	override bool GetCookingTargetTemperature(out float temperature)
+	{
+		temperature = GetTemperature();
+		return true;
+	}
+	
 	override bool IsSelfAdjustingTemperature()
 	{
-		return m_IsBurning || (m_CoolingTimer && m_CoolingTimer.IsRunning())); //FireplaceFireState.NO_FIRE?
+		return m_IsBurning || (m_CoolingTimer && m_CoolingTimer.IsRunning()); //FireplaceFireState.NO_FIRE?
 	}
 	
 	protected void InitializeTemperatureSources()
@@ -653,11 +643,19 @@ class FireplaceBase : ItemBase
 		return IsEmpty() && !IsBurning() && !HasAshes();
 	}
 	
-	override void EECargoOut(EntityAI item)
-	{
-		super.EECargoOut(item);
-
+	override void OnChildItemRemoved(InventoryItem item) 
+	{ 
+		super.OnChildItemRemoved(item);		
 		CheckForDestroy();
+	}
+	
+	override void CheckForDestroy()
+	{
+		if (IsPrepareToDelete())
+		{
+			MiscGameplayFunctions.DropAllItemsInInventoryInBounds(this, m_HalfExtents);
+			super.CheckForDestroy();
+		}
 	}
 	
 	//================================================================
@@ -1642,6 +1640,12 @@ class FireplaceBase : ItemBase
 	{
 		m_HasAshes = has_ashes;
 	}
+	
+	//! returns true when FP is heating or cooling
+	bool IsProcessing()
+	{
+		return ((m_HeatingTimer && m_HeatingTimer.IsRunning()) || (m_CoolingTimer && m_CoolingTimer.IsRunning()));
+	}
 
 	//Is in oven state
 	bool IsOven()
@@ -1752,7 +1756,6 @@ class FireplaceBase : ItemBase
 			
 			SetItemToConsume();
 			SetBurningState(true);
-			m_UTSource.SetActive(true);
 			StartHeating();
 			
 			//Update navmesh
@@ -1854,11 +1857,16 @@ class FireplaceBase : ItemBase
 		if (m_SurfaceUnderWetnessModifier > 0.0)
 			AddWetnessToFireplace(m_SurfaceUnderWetnessModifier * WET_SURFACE_INCREMENT);
 
-		// temperature via UniversalTemperatureSource
-		m_UTSLFireplace.SetFuelCount(GetFuelCount());
+		// FLAT temperature increase
 		temperature = GetTemperature() + (PARAM_TEMPERATURE_INCREASE * TIMER_HEATING_UPDATE_INTERVAL) - temperatureModifier;
-		m_UTSLFireplace.SetCurrentTemperature(temperature);
+		temperature = Math.Clamp(temperature, g_Game.GetMission().GetWorldData().GetBaseEnvTemperatureAtObject(this), m_UTSLFireplace.m_NormalFireplaceTemperatureMax);
+		SetTemperatureDirect(temperature); //direct heating (non-systematic approach), freezing, overheating, and other stuff inside 'SetTemperatureEx' are therefore UNHANDLED here!
+		m_UTSLFireplace.SetFuelCount(GetFuelCount()); //legacy reasons
+		m_UTSLFireplace.SetCurrentTemperature(temperature); //legacy reasons
 		m_UTSource.Update(m_UTSSettings, m_UTSLFireplace);
+		
+		//get newly changed temperature
+		temperature = GetTemperature();
 		
 		//check fire state
 		if (GetFireState() != FireplaceFireState.EXTINGUISHING_FIRE)
@@ -1969,14 +1977,22 @@ class FireplaceBase : ItemBase
 
 	protected void Cooling()
 	{
-		float wetness = GetWet();
 		float temperature = GetTemperature();
 		float temperatureModifier = 0;
 		
 		if (IsOpen() && !IsOven())
 			CheckForRoofLimited(1000 * TIMER_HEATING_UPDATE_INTERVAL * 5);
 		
-		if (!IsBurning() && temperature >= 10)
+		//should never be true!
+		if (IsBurning())
+		{
+			StopCooling();
+			return;
+		}
+		
+		float target = Math.Max(g_Game.GetMission().GetWorldData().GetBaseEnvTemperatureAtObject(this),10);
+		
+		if (temperature > target)
 		{
 			//set wetness and alter temperature modifier (which will lower temperature increase because of soaking)
 			float rain = GetGame().GetWeather().GetRain().GetActual();
@@ -2001,13 +2017,23 @@ class FireplaceBase : ItemBase
 			}
 			
 			//calculate already obtained wetness (e.g. extinguished by water)
+			float wetness = GetWet();
 			temperatureModifier = temperatureModifier + (PARAM_TEMPERATURE_DECREASE * wetness);
 
-			// temperature via UniversalTemperatureSource
+			// COMBINED temperature decrease
+			target = g_Game.GetMission().GetWorldData().GetBaseEnvTemperatureAtObject(this);
+			//FLAT for wetness
+			float flatWetTarget = GetTemperature() - temperatureModifier;
+			flatWetTarget = Math.Clamp(flatWetTarget,target,GetTemperatureMax());
+			SetTemperatureDirect(flatWetTarget);
+			//INTERPOLATED for regular cooling
+			SetTemperatureEx(new TemperatureDataInterpolated(target,ETemperatureAccessTypes.ACCESS_FIREPLACE,TIMER_COOLING_UPDATE_INTERVAL,GameConstants.TEMP_COEF_FIREPLACE_COOLING));
 			m_UTSLFireplace.SetFuelCount(GetFuelCount());
-			temperature = GetTemperature() - (PARAM_TEMPERATURE_DECREASE * TIMER_COOLING_UPDATE_INTERVAL) - temperatureModifier;
-			m_UTSLFireplace.SetCurrentTemperature(temperature);
+			m_UTSLFireplace.UpdateFireplaceTemperature(m_UTSSettings);
 			m_UTSource.Update(m_UTSSettings, m_UTSLFireplace);
+			
+			//get newly changed temperature
+			temperature = GetTemperature();
 			
 			//damage cargo items
 			BurnItemsInFireplace();
@@ -2049,12 +2075,7 @@ class FireplaceBase : ItemBase
 		}
 		else
 		{
-			//stop cooling
-			if (Math.AbsFloat(temperature) < 10)
-			{
-				StopCooling();
-				m_UTSource.SetActive(false);
-			}
+			StopCooling();
 		}
 	}
 
@@ -2072,12 +2093,9 @@ class FireplaceBase : ItemBase
 		DestroyAreaDamage();
 
 		//remove cookware audio visuals
-		if (GetCookingEquipment())
-		{
-			Bottle_Base cooking_pot = Bottle_Base.Cast(GetCookingEquipment());
-			if (cooking_pot)
-				cooking_pot.RemoveAudioVisualsOnClient();
-		}
+		ItemBase cookware;
+		if (Class.CastTo(cookware,GetCookingEquipment()) && (cookware.IsCookware() || cookware.IsLiquidContainer())) //also stops boiling effects on bottles
+			cookware.RemoveAudioVisualsOnClient();
 
 		if (DirectCookingSlotsInUse())
 		{
@@ -2085,17 +2103,27 @@ class FireplaceBase : ItemBase
 			{
 				if (m_DirectCookingSlots[i])
 				{
-					Bottle_Base cookingpot = Bottle_Base.Cast(m_DirectCookingSlots[i]);
-					if (cookingpot)
-						cookingpot.RemoveAudioVisualsOnClient();
-
-					FryingPan fryingpan = FryingPan.Cast(m_DirectCookingSlots[i]);
-					if (fryingpan)
-						fryingpan.RemoveAudioVisualsOnClient();
-
+					if (Class.CastTo(cookware,m_DirectCookingSlots[i]) && (cookware.IsCookware() || cookware.IsLiquidContainer())) //also stops boiling effects on bottles
+						cookware.RemoveAudioVisualsOnClient();
+					
 					Edible_Base itsfood = Edible_Base.Cast(m_DirectCookingSlots[i]);
 					if (itsfood)
 						itsfood.MakeSoundsOnClient(false);
+					
+					GameInventory inv = m_DirectCookingSlots[i].GetInventory();
+					if (!inv)
+						return;
+					
+					CargoBase cargo = inv.GetCargo();
+					if (!cargo) // cookware
+						return;
+					
+					for (int j = 0; j < cargo.GetItemCount(); j++)
+					{
+						Edible_Base edible = Edible_Base.Cast(cargo.GetItem(j));
+						if (edible)
+							edible.MakeSoundsOnClient(false);
+					}
 				}
 			}
 		}
@@ -2186,15 +2214,24 @@ class FireplaceBase : ItemBase
 			float itemTemp = item.GetTemperature();
 			float heatPermCoef = item.GetHeatPermeabilityCoef();
 			float tempCoef;
+			float deltaTime;
 			
 			if (m_HeatingTimer && m_HeatingTimer.IsRunning())
+			{
+				deltaTime = TIMER_HEATING_UPDATE_INTERVAL;
 				tempCoef = GameConstants.TEMP_COEF_FIREPLACE_HEATING;
+			}
 			else if (m_CoolingTimer && m_CoolingTimer.IsRunning())
+			{
+				deltaTime = TIMER_COOLING_UPDATE_INTERVAL;
 				tempCoef = GameConstants.TEMP_COEF_FIREPLACE_COOLING;
+			}
 			else
+			{
 				return;
+			}
 			
-			item.SetTemperatureEx(new TemperatureDataInterpolated(fireplaceTemp,ETemperatureAccessTypes.ACCESS_FIREPLACE,TIMER_COOLING_UPDATE_INTERVAL,tempCoef,heatPermCoef));
+			item.SetTemperatureEx(new TemperatureDataInterpolated(fireplaceTemp,ETemperatureAccessTypes.ACCESS_FIREPLACE,deltaTime,tempCoef,heatPermCoef));
 		}
 	}
 
@@ -2237,13 +2274,15 @@ class FireplaceBase : ItemBase
 			{
 				case ATTACHMENT_TRIPOD:
 				case ATTACHMENT_COOKINGSTAND:
-				case ATTACHMENT_COOKING_POT:
-				case ATTACHMENT_CAULDRON:
-				case ATTACHMENT_FRYING_PAN:
 					item.DecreaseHealth(GameConstants.FIRE_ATTACHMENT_DAMAGE_PER_SECOND * timerCoef, false);
 				break;
 			}
-	
+			
+			if (item.IsCookware())
+			{
+				item.DecreaseHealth(GameConstants.FIRE_ATTACHMENT_DAMAGE_PER_SECOND * timerCoef, false);
+			}
+			
 			//! fuel & kindling		
 			if (IsFuel(item) || IsKindling(item))
 			{
@@ -2277,11 +2316,11 @@ class FireplaceBase : ItemBase
 			float temperature = GetTemperature();
 			temperature = temperature * (1 - (wetness * 0.5));
 			temperature = Math.Clamp(temperature, PARAM_MIN_FIRE_TEMPERATURE, PARAM_NORMAL_FIRE_TEMPERATURE);
-			// temperature via UniversalTemperatureSource
-			m_UTSLFireplace.SetFuelCount(GetFuelCount());
-			m_UTSLFireplace.SetCurrentTemperature(temperature);
+			SetTemperatureDirect(temperature);
+			m_UTSLFireplace.SetFuelCount(GetFuelCount()); //legacy reasons
+			m_UTSLFireplace.SetCurrentTemperature(temperature); //legacy reasons
 		}
-	}	
+	}
 	
 	//! DEPRECATED
 	protected void TransferHeatToNearPlayers() {}
@@ -2475,6 +2514,16 @@ class FireplaceBase : ItemBase
 		}
 		return true;
 	}
+	
+	override bool CanPutIntoHands(EntityAI parent)
+	{
+		if (!super.CanPutIntoHands(parent))
+		{
+			return false;
+		}
+		
+		return GetTemperature() <= GameConstants.STATE_HOT_LVL_ONE; //say 'no' to 3rd degree burns!
+	}
 
 	//Action condition for building oven
 	bool CanBuildOven()
@@ -2534,6 +2583,15 @@ class FireplaceBase : ItemBase
 	//================================================================
 	// ADVANCED PLACEMENT
 	//================================================================
+	override bool CanBePlaced( Man player, vector position )
+	{
+		string surfaceType;
+		float surfaceHeight = GetGame().SurfaceGetType3D( position[0], position[1], position[2], surfaceType );
+		if ((position[1] - surfaceHeight) > PLACEMENT_HEIGHT_LIMIT)
+			return false;
+		
+		return true;
+	}
 	
 	override void OnPlacementComplete(Man player, vector position = "0 0 0", vector orientation = "0 0 0")
 	{
@@ -2545,12 +2603,10 @@ class FireplaceBase : ItemBase
 			Object cc_object = GetGame().CreateObjectEx(OBJECT_CLUTTER_CUTTER , position, ECE_PLACE_ON_SURFACE);
 			cc_object.SetOrientation(orientation);
 			GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(GetGame().ObjectDelete, 1000, false, cc_object);
-			
-			SetIsPlaceSound(true);
 		}
 	}
-	
-	override string GetPlaceSoundset()
+		
+	override string GetDeploySoundset()
 	{
 		return "placeFireplace_SoundSet";
 	}
@@ -2744,7 +2800,7 @@ class FireplaceBase : ItemBase
 	{
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.ACTIVATE_ENTITY, "Ignite", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.DEACTIVATE_ENTITY, "Extinguish", FadeColors.LIGHT_GREY));
-		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 		
 		super.GetDebugActions(outputList);
 	}

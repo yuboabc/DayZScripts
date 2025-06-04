@@ -491,11 +491,17 @@ class ImprovisedExplosive : ExplosivesBase
 		return "improvisedexplosive_deploy_SoundSet";
 	}
 	
-	override protected bool UsesGlobalDeploy()
+	override string GetArmSoundset()
 	{
-		return true;
+		return "ImprovisedExplosive_disarm_SoundSet";
 	}
 	
+	override string GetDisarmSoundset()
+	{
+		return "ImprovisedExplosive_disarm_SoundSet";
+	}
+	
+		
 #ifdef DEVELOPER
 	override protected string GetDebugText()
 	{

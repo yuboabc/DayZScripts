@@ -178,7 +178,7 @@ class LandMineTrap extends TrapBase
 	{
 		if (obj.IsInherited(CarWheel))
 		{
-			obj.ProcessDirectDamage(DT_CLOSE_COMBAT, this, "", "LandMineExplosion_CarWheel", "0 0 0", 1);
+			obj.ProcessDirectDamage(DamageType.CLOSE_COMBAT, this, "", "LandMineExplosion_CarWheel", "0 0 0", 1);
 			Explode(DamageType.EXPLOSION);
 
 			if (m_UpdateTimer.IsRunning())
@@ -328,7 +328,7 @@ class LandMineTrap extends TrapBase
 	{
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.ACTIVATE_ENTITY, "Activate", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.DEACTIVATE_ENTITY, "Deactivate", FadeColors.LIGHT_GREY));
-		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 		
 		super.GetDebugActions(outputList);
 	}

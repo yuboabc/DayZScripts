@@ -38,7 +38,7 @@ class BaseBuildingBase extends ItemBase
 	// Constructor
 	void BaseBuildingBase() 
 	{
-		m_DamageTriggers = new ref map<string, ref AreaDamageManager>;
+		m_DamageTriggers = new map<string, ref AreaDamageManager>;
 		
 		//synchronized variables
 		RegisterNetSyncVariableInt( "m_SyncParts01" );
@@ -89,6 +89,30 @@ class BaseBuildingBase extends ItemBase
 	override int GetHideIconMask()
 	{
 		return EInventoryIconVisibility.HIDE_VICINITY;
+	}
+	
+	override void InitItemSounds()
+	{
+		super.InitItemSounds();
+
+		ItemSoundHandler handler = GetItemSoundHandler();
+		SoundParameters params = new SoundParameters();
+		params.m_Loop = true;
+
+		if (GetFoldSoundset() != string.Empty)
+			handler.AddSound(SoundConstants.ITEM_FOLD, GetFoldSoundset());
+		if (GetLoopFoldSoundset() != string.Empty)
+			handler.AddSound(SoundConstants.ITEM_FOLD_LOOP, GetLoopFoldSoundset(), params);
+	}
+	
+	override string GetFoldSoundset()
+	{
+		return "putDown_FenceKit_SoundSet";
+	}
+	
+	override string GetLoopFoldSoundset()
+	{
+		return "Shelter_Site_Build_Loop_SoundSet";
 	}
 
 	// --- SYNCHRONIZATION
@@ -630,7 +654,7 @@ class BaseBuildingBase extends ItemBase
 		{
 			//Destroy construction
 			GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(DestroyConstruction, 200, false, this);
-		}		
+		}
 	}
 	
 	void OnPartDismantledClient( string part_name, int action_id )
@@ -670,14 +694,68 @@ class BaseBuildingBase extends ItemBase
 		{
 			//Destroy construction
 			GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(DestroyConstruction, 200, false, this);
-		}			
+		}
 	}
 	
 	void OnPartDestroyedClient( string part_name, int action_id )
 	{
 		//play sound
 		SoundDestroyStart( part_name );
-	}	
+	}
+	
+	//! Disconnected temporarily
+	protected void HandleItemFalling(ConstructionPart part)
+	{
+		bool process = false;
+		
+		//TODO: add a parameter to parts' config classes?
+		process |= part.m_PartName.Contains("_roof");
+		process |= part.m_PartName.Contains("_platform");
+		process |= part.m_PartName.Contains("_stair");
+		
+		if (process)
+		{
+			if (!MemoryPointExists(part.m_PartName + "_min") || !MemoryPointExists(part.m_PartName + "_max"))
+			{
+				Debug.Log("min/max memory points do not exist for part: " + part.m_PartName);
+				return;
+			}
+			
+			vector mins, maxs;
+			mins = ModelToWorld(GetMemoryPointPos(part.m_PartName + "_min"));
+			maxs = ModelToWorld(GetMemoryPointPos(part.m_PartName + "_max"));
+			
+			//sanitize minmaxs
+			vector minTmp, maxTmp;
+			minTmp[0] = Math.Min(mins[0],maxs[0]);
+			maxTmp[0] = Math.Max(mins[0],maxs[0]);
+			minTmp[1] = Math.Min(mins[1],maxs[1]);
+			maxTmp[1] = Math.Max(mins[1],maxs[1]);
+			minTmp[2] = Math.Min(mins[2],maxs[2]);
+			maxTmp[2] = Math.Max(mins[2],maxs[2]);
+			mins = minTmp;
+			maxs = maxTmp;
+			
+			maxs[1] = maxs[1] + 0.35; //reach a little above..
+			
+			ItemFall(mins,maxs);
+		}
+	}
+	
+	//! Disconnected temporarily
+	protected void ItemFall(vector min, vector max)
+	{
+		array<EntityAI> foundEntities = new array<EntityAI>();
+		DayZPlayerUtils.PhysicsGetEntitiesInBox(min,max,foundEntities);
+		
+		//filtering
+		ItemBase item;
+		foreach (EntityAI entity : foundEntities)
+		{
+			if (Class.CastTo(item,entity) && !item.CanUseConstruction()) //BB items?
+				item.ThrowPhysically(null,vector.Zero);
+		}
+	}
 	
 	// --- UPDATE
 	void InitBaseState()

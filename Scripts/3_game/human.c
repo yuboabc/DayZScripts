@@ -882,11 +882,15 @@ enum WeaponActionChamberingTypes
 	CHAMBERING_ONEBULLET_UNIQUE_OPENED 			= 3,		//
 	CHAMBERING_ONEBULLET_UNIQUE_CLOSED			= 4,		//
 	CHAMBERING_TWOBULLETS_START					= 6,		//  plays one bullet, then second, then ends, when CHAMBERING_TWOBULLETS_END arise, it's canceled
-	CHAMBERING_TWOBULLETS_END					= 7,		//  - one bullet reload with closed mechanism		
+	CHAMBERING_TWOBULLETS_END					= 7,		//  - one bullet reload with closed mechanism	
+	
+	CHAMBERING_STARTLOOPABLE_CLOSED_EXTRA		= 9,	
 	CHAMBERING_STARTLOOPABLE_CLOSED				= 10,		// start loop chambering
 	CHAMBERING_ENDLOOPABLE						= 11,		// end loop chambering
 	CHAMBERING_STARTLOOPABLE_CLOSED_KEEP		= 12,		// start loop chambering and keep last bullet
 	CHAMBERING_STARTLOOPABLE_OPENED				= 13,		// 
+	
+	CHAMBERING_STARTLOOPABLE_CLOSED_WITHCHAMBER	= 14,
 	
 	CHAMBERING_STARTLOOPABLE_SHOTGUN_UNCOCKED	= 15,
 	CHAMBERING_STARTLOOPABLE_SHOTGUN_COCKED		= 16, 
@@ -980,7 +984,7 @@ enum WeaponEvents
 	SLIDER_OPEN,
 	UNJAMMED,
 	HAMMER_UNCOCKED,
-	HAMMER_COCKED
+	HAMMER_COCKED,
 	CHANGE_HIDE,
 	CHANGE_SHOW,
 	CYLINDER_ROTATE,
@@ -1022,8 +1026,17 @@ class HumanCommandWeapons
 	//! sets head tilt to optics
 	proto native	void		SetADS(bool pState);
 
-	//! command for lifting weapon near obstacled (works only when weapon is raised)
+	//! command for lifting weapon near obstacles (works only when weapon is raised)
 	proto native	void		LiftWeapon(bool pState);
+	
+	//! return if lifting weapon is active
+	proto native	bool		IsWeaponLifted();
+	
+	//! command for obstruction weapon near obstacles
+	proto native	void		ObstructWeapon(float pState01);
+	
+	//! return obstruction value
+	proto native	float		GetWeaponObstruction();
 	
 	//! returns aiming hands up/down (y) offset angle
 	proto native	float		GetAimingHandsOffsetUD();
@@ -1219,6 +1232,23 @@ class HumanCommandScript
 	proto native 	void 	SetHeading(float yawAngle, float filterDt = -1, float maxYawSpeed = FLT_MAX);
 	proto native 	void 	AddHeadingRelativeTo(HumanRelativeHeadingMode mode, float yawAngle, float filterDt = -1, float maxYawSpeed = FLT_MAX);
 
+	//! Override this to return the current stance of the human.
+	int GetCurrentStance()
+	{
+		return DayZPlayerConstants.STANCEIDX_ERECT;
+	}
+	
+	//! Override this to return the current movement state of the human.
+	int GetCurrentMovement()
+	{
+		return DayZPlayerConstants.MOVEMENT_IDLE;
+	}
+	
+	//! Override this to return the current leaning state of the human. <-1, 1>
+	float GetCurrentLeaning()
+	{
+		return 0.0;
+	}
 
 	//---------------------------------------------------------------
 	// PreAnim Update 
@@ -1645,4 +1675,7 @@ class Human extends Man
 	
 	void	OnVehicleSeatDriverEnter();
 	void	OnVehicleSeatDriverLeft();
+
+	proto native bool IsControllingVehicle();
+
 }

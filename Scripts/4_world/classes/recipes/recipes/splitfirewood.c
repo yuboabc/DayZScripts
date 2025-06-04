@@ -20,7 +20,7 @@ class SplitFirewood extends RecipeBase
 		//----------------------------------------------------------------------------------------------------------------------
 		//INGREDIENTS
 		//ingredient 1
-		InsertIngredient(0,"Firewood");						// you can insert multiple ingredients this way
+		InsertIngredient(0,"Firewood");	// you can insert multiple ingredients this way
 
 		m_IngredientAddHealth[0]		= 0;				// 0 = do nothing
 		m_IngredientSetHealth[0]		= -1;				// -1 = do nothing
@@ -28,12 +28,12 @@ class SplitFirewood extends RecipeBase
 		m_IngredientDestroy[0]			= false;			// true = destroy, false = do nothing
 
 		//ingredient 2
-		InsertIngredientEx(1,"Hacksaw"  , 		 "FirewoodSplit_Saw");
-		InsertIngredientEx(1,"HandSaw"  , 		 "FirewoodSplit_Saw");
-		InsertIngredientEx(1,"Pickaxe"  , 		 "FirewoodSplit_Axe");
-		InsertIngredientEx(1,"WoodAxe"  , 		 "FirewoodSplit_Axe");
-		InsertIngredientEx(1,"Hatchet"  ,  		 "FirewoodSplit_Axe");
-		InsertIngredientEx(1,"FirefighterAxe" ,  "FirewoodSplit_Axe");
+		InsertIngredientEx(1,"Hacksaw"  , 		 "FirewoodSplit_Saw", DayZPlayerConstants.CMD_ACTIONFB_SPLITTING_FIREWOOD, true);
+		InsertIngredientEx(1,"HandSaw"  , 		 "FirewoodSplit_Saw", DayZPlayerConstants.CMD_ACTIONFB_SPLITTING_FIREWOOD, true);
+		InsertIngredientEx(1,"Pickaxe"  , 		 "FirewoodSplit_Axe", DayZPlayerConstants.CMD_ACTIONFB_SPLITTING_FIREWOOD, true);
+		InsertIngredientEx(1,"WoodAxe"  , 		 "FirewoodSplit_Axe", DayZPlayerConstants.CMD_ACTIONFB_SPLITTING_FIREWOOD, true);
+		InsertIngredientEx(1,"Hatchet"  ,  		 "FirewoodSplit_Axe", DayZPlayerConstants.CMD_ACTIONFB_SPLITTING_FIREWOOD, true);
+		InsertIngredientEx(1,"FirefighterAxe" ,  "FirewoodSplit_Axe", DayZPlayerConstants.CMD_ACTIONFB_SPLITTING_FIREWOOD, true);
 
 		m_IngredientAddHealth[1]		= -6;
 		m_IngredientSetHealth[1]		= -1;
@@ -58,11 +58,5 @@ class SplitFirewood extends RecipeBase
 	override bool CanDo(ItemBase ingredients[], PlayerBase player)
 	{
 		return true;
-	}
-
-	//gets called upon recipe's completion
-	override void Do(ItemBase ingredients[], PlayerBase player,array<ItemBase> results, float specialty_weight)
-	{
-		Debug.Log("Recipe Do method called","recipes");
 	}
 };

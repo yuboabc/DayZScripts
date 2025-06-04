@@ -48,7 +48,7 @@ class RPTLoadedDischarged extends WeaponStableState
 	override bool IsRepairEnabled () { return true; }
 	override void InitMuzzleArray () { m_muzzleHasBullet = {MuzzleState.F}; }
 };
-class RPTLoadedJammed extends WeaponStateJammed
+class RPTLoadedJammed extends WeaponStableState
 {
 	override void OnEntry (WeaponEventBase e) { if (LogManager.IsWeaponLogEnable()) { wpnPrint("[wpnfsm] " + Object.GetDebugName(m_weapon) + " { LoadedJammed JF"); } super.OnEntry(e); }
 	override void OnExit (WeaponEventBase e) { super.OnExit(e); if (LogManager.IsWeaponLogEnable()) { wpnPrint("[wpnfsm] " + Object.GetDebugName(m_weapon) + " } LoadedJammed JF"); } }
@@ -223,12 +223,9 @@ class Repeater_Base extends Rifle_Base
 	
 	override void SetActions()
 	{
+		AddAction(FirearmActionLoadMultiBulletQuick);
 		super.SetActions();
 		AddAction(FirearmActionLoadMultiBullet);
-
-		RemoveAction(FirearmActionLoadBulletQuick); // Easy reload
-		AddAction(FirearmActionLoadMultiBulletQuick); // Easy reload
-
 	}
 };
 

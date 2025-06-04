@@ -27,11 +27,11 @@ class ConstructionActionData
 
 	void ConstructionActionData()
 	{
-		m_BuildParts = new ref array<ConstructionPart>;
-		m_BuildPartsNoTool = new ref array<ConstructionPart>;
+		m_BuildParts = new array<ConstructionPart>;
+		m_BuildPartsNoTool = new array<ConstructionPart>;
 		m_PartIndex = 0;
 		
-		m_Attachments = new ref array<EntityAI>;
+		m_Attachments = new array<EntityAI>;
 		m_AttachmentsIndex = 0;
 
 		if ( GetGame().IsClient() || !GetGame().IsMultiplayer() )
@@ -43,6 +43,22 @@ class ConstructionActionData
 			m_ActionNoToolVariantManager = ActionManagerClient.GetVariantManager( ActionBuildShelter );
 			m_ActionNoToolVariantManager.GetOnUpdateInvoker().Clear();
 			m_ActionNoToolVariantManager.GetOnUpdateInvoker().Insert(OnUpdateActionsNoTool);
+		}
+	}
+	
+	void ~ConstructionActionData()
+	{
+		if (GetGame() && (GetGame().IsClient() || !GetGame().IsMultiplayer()))
+		{
+			if (m_ActionVariantManager)
+			{
+				m_ActionVariantManager.GetOnUpdateInvoker().Remove(OnUpdateActions);
+			}
+			
+			if (m_ActionNoToolVariantManager)
+			{
+				m_ActionNoToolVariantManager.GetOnUpdateInvoker().Remove(OnUpdateActionsNoTool);
+			}
 		}
 	}
 	

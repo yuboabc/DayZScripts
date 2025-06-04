@@ -32,7 +32,10 @@ class ActionCreateGreenhouseGardenPlot: ActionContinuousBase
 		if ( !target ) 
 			return false;
 		
-		if ( player.IsPlacingLocal() || player.GetInColdArea() )
+		if ( player.IsPlacingLocal() )
+			return false;
+		
+		if (!CfgGameplayHandler.GetDisableColdAreaPlacementCheck() && player.GetInColdArea())
 			return false;
 
 		Object target_object = target.GetObject();
@@ -90,19 +93,38 @@ class ActionCreateGreenhouseGardenPlot: ActionContinuousBase
 		
 		vector orientation = targetObject.GetOrientation();
 		
-		if ( GetGame().IsMultiplayer() )
+		Land_Misc_Polytunnel tunnel;
+		if (GetGame().IsMultiplayer())
 		{		
-			Land_Misc_Polytunnel tunnel = Land_Misc_Polytunnel.Cast(action_data.m_Target.GetObject());
+			tunnel = Land_Misc_Polytunnel.Cast(action_data.m_Target.GetObject());
 			if (tunnel)
 			{
-				m_GardenPlot = GardenPlot.Cast( GetGame().CreateObjectEx( "GardenPlotPolytunnel", position, ECE_KEEPHEIGHT ) );
+				m_GardenPlot = GardenPlot.Cast(GetGame().CreateObjectEx("GardenPlotPolytunnel", position, ECE_KEEPHEIGHT));
 			}
 			else
 			{
-				m_GardenPlot = GardenPlot.Cast( GetGame().CreateObjectEx( "GardenPlotGreenhouse", position, ECE_KEEPHEIGHT ) );
+				m_GardenPlot = GardenPlot.Cast(GetGame().CreateObjectEx("GardenPlotGreenhouse", position, ECE_KEEPHEIGHT));
 			}
 			
-			m_GardenPlot.SetOrientation( orientation );
+			m_GardenPlot.SetOrientation(orientation);
+			m_GardenPlot.OnPlacementComplete(action_data.m_Player);
+		}
+		
+		//local singleplayer
+		if (!GetGame().IsMultiplayer())
+		{
+			tunnel = Land_Misc_Polytunnel.Cast(action_data.m_Target.GetObject());
+			if (tunnel)
+			{
+				m_GardenPlot = GardenPlot.Cast(GetGame().CreateObjectEx("GardenPlotPolytunnel", position, ECE_KEEPHEIGHT));
+			}
+			else
+			{
+				m_GardenPlot = GardenPlot.Cast(GetGame().CreateObjectEx("GardenPlotGreenhouse", position, ECE_KEEPHEIGHT));
+			}
+			
+			m_GardenPlot.SetOrientation(orientation);			
+			m_GardenPlot.OnPlacementComplete(action_data.m_Player);
 		}
 	}
 	

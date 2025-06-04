@@ -91,6 +91,7 @@ class PluginDiagMenu : PluginBase
 				//---------------------------------------------------------------
 				DiagMenu.RegisterItem(DiagMenuIDs.VEHICLE_DEBUG_OUTPUT, "", "Crash Log", DiagMenuIDs.VEHICLES, "None, Basic, Extended, Contact, Basic+Contact");
 				DiagMenu.RegisterBool(DiagMenuIDs.VEHICLE_DUMP_CRASH_DATA, "lalt+7", "Dump Crash Data", DiagMenuIDs.VEHICLES);
+				DiagMenu.RegisterBool(DiagMenuIDs.VEHICLE_DRAW_FLIP_CONTEXT, "", "Draw Flip Context", DiagMenuIDs.VEHICLES);
 			}
 
 			//---------------------------------------------------------------
@@ -282,6 +283,7 @@ class PluginDiagMenu : PluginBase
 				// LEVEL 2 - Script > Misc
 				//---------------------------------------------------------------	
 				DiagMenu.RegisterBool(DiagMenuIDs.MISC_FREEZE_ENTITY, "lalt+x", "Freeze entity", DiagMenuIDs.MISC_MENU);		
+				DiagMenu.RegisterBool(DiagMenuIDs.MISC_FREEZE_PLAYER, "lalt+e", "Freeze player", DiagMenuIDs.MISC_MENU);
 				DiagMenu.RegisterBool(DiagMenuIDs.MISC_CONNECTION_STATS, "lalt+4", "Show Connection Stats", DiagMenuIDs.MISC_MENU);
 				DiagMenu.RegisterBool(DiagMenuIDs.MISC_PLAYER_SYMPTOMS_SHOW, "", "Show States", DiagMenuIDs.MISC_MENU);
 				DiagMenu.RegisterRange(DiagMenuIDs.MISC_PLAYER_SYMPTOMS_TOGGLE_HMP, "", "Set HMP symptom", DiagMenuIDs.MISC_MENU, "-1, 1, -1, 1");
@@ -345,6 +347,8 @@ class PluginDiagMenu : PluginBase
 				DiagMenu.RegisterItem(DiagMenuIDs.WEAPON_BURST_VERSION, "lctrl+0", "Burst Version", DiagMenuIDs.WEAPON_MENU, "Hold, Press");
 				DiagMenu.RegisterBool(DiagMenuIDs.WEAPON_CLAYMORE_DEBUG, "", "Claymore debugs", DiagMenuIDs.WEAPON_MENU);
 				DiagMenu.RegisterItem(DiagMenuIDs.WEAPON_LIFT_DEBUG, "", "Weapon Lift Debug", DiagMenuIDs.WEAPON_MENU, "false,true,extended");
+				DiagMenu.RegisterItem(DiagMenuIDs.WEAPON_FORCEALLOW_OBSTRUCTION, "", "Force Allow Obstruction", DiagMenuIDs.WEAPON_MENU, "off,conditional,always,alwaysDynamic,neverStatic,alwaysDynamicNeverStatic,neverEver");
+				DiagMenu.RegisterBool(DiagMenuIDs.WEAPON_DISABLE_OBSTRUCTION_INTERPOLATION, "", "Disable Obstruction Interpolation", DiagMenuIDs.WEAPON_MENU);
 			}
 		
 			//---------------------------------------------------------------
@@ -514,6 +518,7 @@ class PluginDiagMenu : PluginBase
 				DiagMenu.RegisterBool(DiagMenuIDs.FEATURE_TIME_ACCEL_UG_ENTRANCES, "", "Underground Entrances", DiagMenuIDs.FEATURE_TIME_ACCEL_MENU);
 				DiagMenu.RegisterBool(DiagMenuIDs.FEATURE_TIME_ACCEL_UG_RESERVOIR, "", "Underground Reservoir", DiagMenuIDs.FEATURE_TIME_ACCEL_MENU);
 				DiagMenu.RegisterBool(DiagMenuIDs.FEATURE_TIME_ACCEL_ENERGY_CONSUME, "", "Energy Consumption", DiagMenuIDs.FEATURE_TIME_ACCEL_MENU);
+				DiagMenu.RegisterBool(DiagMenuIDs.FEATURE_TIME_ACCEL_ENERGY_RECHARGE, "", "Energy Recharge", DiagMenuIDs.FEATURE_TIME_ACCEL_MENU);
 				DiagMenu.RegisterBool(DiagMenuIDs.FEATURE_TIME_ACCEL_FOOD_DECAY, "", "Decay", DiagMenuIDs.FEATURE_TIME_ACCEL_MENU);
 				DiagMenu.RegisterBool(DiagMenuIDs.FEATURE_TIME_ACCEL_DYNAMIC_MUSIC_PLAYER, "", "Dynamic Music Player", DiagMenuIDs.FEATURE_TIME_ACCEL_MENU);
 			}
@@ -773,7 +778,11 @@ class PluginDiagMenu : PluginBase
 				{
 					PluginLifespan pluginLifespan = PluginLifespan.Cast(GetPlugin(PluginLifespan));
 					pluginLifespan.UpdateBloodyHandsVisibility(player, CachedObjectsParams.PARAM1_BOOL.param1);
+					player.SetBloodyHandsPenaltyChancePerAgent(eAgents.SALMONELLA, 0.75);
 				}
+				else
+					player.ClearBloodyHandsPenaltyChancePerAgent(eAgents.SALMONELLA);
+
 				break;
 			}
 
@@ -821,6 +830,7 @@ class PluginDiagMenu : PluginBase
 				break;
 			}
 			
+			#ifdef ENABLE_LOGGING
 			case ERPCs.DIAG_MISC_ENVIRONMENT_LOGGING_DRYWET:
 			{
 				if (ctx.Read(CachedObjectsParams.PARAM1_BOOL))
@@ -840,6 +850,7 @@ class PluginDiagMenu : PluginBase
 				}
 				break;
 			}
+			#endif
 			
 			//---------------------------------------------------------------
 			// LEVEL 2 - Script > Misc

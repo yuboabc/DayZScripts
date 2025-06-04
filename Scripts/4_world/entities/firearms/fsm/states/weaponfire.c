@@ -51,6 +51,13 @@ class WeaponFire extends WeaponStartAction
 	{
 		if (e)
 		{
+			if (GetGame().IsServer())
+			{
+				PlayerBase playerOwner;
+				Class.CastTo(playerOwner, m_weapon.GetHierarchyParent());
+				m_weapon.AddJunctureToAttachedMagazine(playerOwner, 100);
+			}
+			
 			m_dtAccumulator = 0;
 	
 			if (LogManager.IsWeaponLogEnable()) { wpnPrint("[wpnfsm] " + Object.GetDebugName(m_weapon) + " WeaponFire bang!"); }
@@ -85,6 +92,13 @@ class WeaponFire extends WeaponStartAction
 	{
 		if (e)
 			m_dtAccumulator = 0;
+		
+		if (GetGame().IsServer())
+		{
+			PlayerBase playerOwner;
+			Class.CastTo(playerOwner, m_weapon.GetHierarchyParent());
+			m_weapon.ClearJunctureToAttachedMagazine(playerOwner);
+		}
 		super.OnExit(e);
 	}
 	
@@ -136,14 +150,13 @@ class WeaponFireMultiMuzzle extends WeaponStartAction
 			int b = m_weapon.GetCurrentModeBurstSize(mi);
 			if (b > 1)
 			{
-				
 				for (int i = 0; i < b; i++)
 				{
 					if (TryFireWeapon(m_weapon, i))
 					{
 						DayZPlayerImplement p1;
 						if (Class.CastTo(p1, e.m_player))
-						p1.GetAimingModel().SetRecoil(m_weapon);
+							p1.GetAimingModel().SetRecoil(m_weapon);
 						m_weapon.OnFire(i);
 					}
 				}
@@ -158,7 +171,8 @@ class WeaponFireMultiMuzzle extends WeaponStartAction
 					m_weapon.OnFire(mi);
 				}
 			}
-			if(mi >= m_weapon.GetMuzzleCount() - 1 )
+			
+			if (mi >= m_weapon.GetMuzzleCount() - 1)
 				m_weapon.SetCurrentMuzzle(0);
 			else
 				m_weapon.SetCurrentMuzzle(mi + 1);
@@ -319,12 +333,6 @@ class WeaponFireAndChamber extends WeaponFire
 		super.OnEntry(e);
 		if (e)
 		{
-			if (GetGame().IsServer())
-			{
-				PlayerBase playerOwner;
-				Class.CastTo(playerOwner, m_weapon.GetHierarchyParent());
-				m_weapon.AddJunctureToAttachedMagazine(playerOwner, 100);
-			}
 			if (!m_weapon.IsJammed())
 			{
 				if (LogManager.IsWeaponLogEnable()) { wpnDebugPrint("[wpnfsm] " + Object.GetDebugName(m_weapon) + " ejected fired out casing"); }
@@ -336,18 +344,6 @@ class WeaponFireAndChamber extends WeaponFire
 				pushToChamberFromAttachedMagazine(m_weapon, mi);
 			}
 		}
-	}
-	
-	override void OnExit (WeaponEventBase e)
-	{
-		super.OnExit(e);
-		if (GetGame().IsServer())
-		{
-			PlayerBase playerOwner;
-			Class.CastTo(playerOwner, m_weapon.GetHierarchyParent());
-			m_weapon.ClearJunctureToAttachedMagazine(playerOwner);
-		}
-		
 	}
 };
 

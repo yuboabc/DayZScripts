@@ -6,10 +6,11 @@ class ActionDrinkPondContinuousCB : ActionContinuousBaseCB
 	}
 }
 
-class ActionDrinkPondContinuous: ActionContinuousBase
+class ActionDrinkPondContinuous : ActionContinuousBase
 {
 	private const float WATER_DRANK_PER_SEC = 35;
 	protected const string ALLOWED_WATER_SURFACES = string.Format("%1|%2", UAWaterType.FRESH, UAWaterType.STILL);
+	protected int m_AllowedLiquidMask;
 	
 	void ActionDrinkPondContinuous()
 	{
@@ -18,6 +19,10 @@ class ActionDrinkPondContinuous: ActionContinuousBase
 		m_FullBody 			= true;
 		m_StanceMask 		= DayZPlayerConstants.STANCEMASK_CROUCH;
 		m_Text 				= "#drink";
+		
+		m_AllowedLiquidMask = LIQUID_GROUP_DRINKWATER;
+		m_AllowedLiquidMask &= ~LIQUID_SNOW;
+		m_AllowedLiquidMask &= ~LIQUID_HOTWATER;
 	}
 	
 	override bool IsDrink()
@@ -37,8 +42,8 @@ class ActionDrinkPondContinuous: ActionContinuousBase
 	
 	override void CreateConditionComponents()  
 	{
-		m_ConditionItem 	= new CCINone();
-		m_ConditionTarget 	= new CCTWaterSurfaceEx(UAMaxDistances.DEFAULT, LIQUID_GROUP_DRINKWATER - LIQUID_SNOW - LIQUID_HOTWATER);
+		m_ConditionItem = new CCINone();
+		m_ConditionTarget = new CCTWaterSurfaceEx(UAMaxDistances.DEFAULT, m_AllowedLiquidMask);
 	}
 	
 	override bool ActionCondition(PlayerBase player, ActionTarget target, ItemBase item)
@@ -46,7 +51,10 @@ class ActionDrinkPondContinuous: ActionContinuousBase
 		if (item && item.IsHeavyBehaviour())
 			return false;
 		
-		return player.CanEatAndDrink();
+		int liquidType = LIQUID_NONE;
+		liquidType = target.GetSurfaceLiquidType();
+
+		return liquidType & m_AllowedLiquidMask && player.CanEatAndDrink();
 	}
 
 	override void OnStart(ActionData action_data)
@@ -64,29 +72,35 @@ class ActionDrinkPondContinuous: ActionContinuousBase
 	override void OnFinishProgressServer(ActionData action_data)
 	{
 		Param1<float> nacdata = Param1<float>.Cast(action_data.m_ActionComponent.GetACData());
-		float amount = UAQuantityConsumed.DRINK;
-		
-		EConsumeType consumeType;
-		int liquidSource = GetLiquidSource(action_data.m_Target);
-		switch (liquidSource)
+		if (nacdata)
 		{
-			case LIQUID_CLEANWATER:
-				consumeType = EConsumeType.ENVIRO_WELL;
-				break;
-		
-			default:
-				consumeType = EConsumeType.ENVIRO_POND;
-				break;
-		}
-		
-		action_data.m_Player.Consume(null, amount, consumeType);
-	}
+			EConsumeType consumeType;
+			
+			CCTWaterSurfaceEx waterCheck = CCTWaterSurfaceEx.Cast(m_ConditionTarget);
+			if (!waterCheck)
+				return;
+			
+			int liquidSource = waterCheck.GetLiquidType();
+			switch (liquidSource)
+			{
+				case LIQUID_CLEANWATER:
+					consumeType = EConsumeType.ENVIRO_WELL;
+					break;
+			
+				default:
+					consumeType = EConsumeType.ENVIRO_POND;
+					break;
+			}
 
-	override void OnEndAnimationLoopServer(ActionData action_data)
-	{
-		if (action_data.m_Player.HasBloodyHands() && !action_data.m_Player.GetInventory().FindAttachment(InventorySlots.GLOVES))
-		{
-			action_data.m_Player.SetBloodyHandsPenalty();
+			PlayerConsumeData consumeData = new PlayerConsumeData();
+
+			consumeData.m_Type 		= consumeType;
+			consumeData.m_Amount 	= UAQuantityConsumed.DRINK;
+			consumeData.m_Source 	= null;
+			consumeData.m_Agents 	= action_data.m_Player.GetBloodyHandsPenaltyAgents();
+			consumeData.m_LiquidType = liquidSource;
+			
+			action_data.m_Player.Consume(consumeData);
 		}
 	}
 	
@@ -119,6 +133,13 @@ class ActionDrinkPondContinuous: ActionContinuousBase
 		return true;
 	}
 	
+	override bool IsLockTargetOnUse()
+	{
+		return false;
+	}
+	
+	// DEPRECATED
+	[Obsolete("CCTWaterSurfaceEx::GetSurfaceLiquidType can be used instead")]
 	protected int GetLiquidSource(ActionTarget target)
 	{
 		vector hitPosition = target.GetCursorHitPos();

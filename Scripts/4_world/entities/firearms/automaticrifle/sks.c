@@ -49,7 +49,7 @@ class SKS_OPN_BU0 extends WeaponStableState
 	override bool IsRepairEnabled () { return true; }
 	override void InitMuzzleArray () { m_muzzleHasBullet = {MuzzleState.E}; }
 };
-class SKS_JAM_BU1 extends WeaponStateJammed
+class SKS_JAM_BU1 extends WeaponStableState
 {
 	override void OnEntry (WeaponEventBase e) { if (LogManager.IsWeaponLogEnable()) { wpnPrint("[wpnfsm] " + Object.GetDebugName(m_weapon) + " { jammed bullet"); } super.OnEntry(e); }
 	override void OnExit (WeaponEventBase e) { super.OnExit(e); if (LogManager.IsWeaponLogEnable()) { wpnPrint("[wpnfsm] " + Object.GetDebugName(m_weapon) + " } jammed bullet"); } }
@@ -257,11 +257,14 @@ class SKS_Base extends Rifle_Base
 	
 	override void SetActions()
 	{
+		AddAction(FirearmActionLoadMultiBulletQuick);
 		super.SetActions();
 		AddAction(FirearmActionLoadMultiBullet);
-
-		RemoveAction(FirearmActionLoadBulletQuick); // Easy reload
-		AddAction(FirearmActionLoadMultiBulletQuick); // Easy reload
+	}
+	
+	override bool MustBeChambered(int muzzleIndex)
+	{
+		return true;
 	}
 	
 	//Debug menu Spawn Ground Special

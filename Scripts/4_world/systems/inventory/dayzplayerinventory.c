@@ -350,88 +350,93 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 		Weapon_Base weapon;
 		Class.CastTo(weapon, GetEntityInHands());
 		
-		if (hcw && weapon && weapon.CanProcessWeaponEvents())
+		if (weapon)
 		{
-			weapon.GetCurrentState().OnUpdate(dt);
-
-			if (LogManager.IsWeaponLogEnable())
+			weapon.UpdateCoolDown(dt);
+			if (hcw && weapon.CanProcessWeaponEvents())
 			{
-				wpnDebugSpamALot("[wpnfsm] " + Object.GetDebugName(weapon) + " HCW: playing A=" + typename.EnumToString(WeaponActions, hcw.GetRunningAction()) + " AT=" + WeaponActionTypeToString(hcw.GetRunningAction(), hcw.GetRunningActionType()) + " fini=" + hcw.IsActionFinished());
-			}
-
-			if (!weapon.IsIdle())
-			{
-				while (true)
-				{
-					int weaponEventId = hcw.IsEvent();
-					if (weaponEventId == -1)
-					{
-						break;
-					}
-
-					if (weaponEventId == WeaponEvents.CHANGE_HIDE)
-					{
-						break;
-					}
-
-					WeaponEventBase anim_event = WeaponAnimEventFactory(weaponEventId, GetDayZPlayerOwner(), NULL);
-					
-					if (LogManager.IsWeaponLogEnable())
-					{
-						wpnDebugPrint("[wpnfsm] " + Object.GetDebugName(weapon) + " HandleWeapons: event arrived " + typename.EnumToString(WeaponEvents, weaponEventId) + "(" + weaponEventId + ")  fsm_ev=" + anim_event.ToString());
-					}
-
-					if (anim_event != NULL)
-					{
-						weapon.ProcessWeaponEvent(anim_event);
-					}
-				}
-
-				if (hcw.IsActionFinished())
-				{
-					if (weapon.IsWaitingForActionFinish())
-					{
-						if (LogManager.IsWeaponLogEnable())
-						{
-							wpnDebugPrint("[wpnfsm] " + Object.GetDebugName(weapon) + " Weapon event: finished! notifying waiting state=" + weapon.GetCurrentState());
-						}
-						
-						weapon.ProcessWeaponEvent(new WeaponEventHumanCommandActionFinished(GetDayZPlayerOwner()));
-					}
-					else
-					{
-						if (LogManager.IsWeaponLogEnable())
-						{
-							wpnDebugPrint("[wpnfsm] " + Object.GetDebugName(weapon) + " Weapon event: ABORT! notifying running state=" + weapon.GetCurrentState());
-						}
-
-						weapon.ProcessWeaponAbortEvent(new WeaponEventHumanCommandActionAborted(GetDayZPlayerOwner()));
-					}
-				}
-			}
-
-			if (m_DeferredWeaponEvent)
-			{
+				
+				weapon.GetCurrentState().OnUpdate(dt);
+	
 				if (LogManager.IsWeaponLogEnable())
 				{
-					wpnDebugPrint("[wpnfsm] " + Object.GetDebugName(weapon) + " Weapon event: deferred " + m_DeferredWeaponEvent.DumpToString());
+					wpnDebugSpamALot("[wpnfsm] " + Object.GetDebugName(weapon) + " HCW: playing A=" + typename.EnumToString(WeaponActions, hcw.GetRunningAction()) + " AT=" + WeaponActionTypeToString(hcw.GetRunningAction(), hcw.GetRunningActionType()) + " fini=" + hcw.IsActionFinished());
 				}
-
-				if (weapon.ProcessWeaponEvent(m_DeferredWeaponEvent))
+	
+				if (!weapon.IsIdle())
 				{
-					exitIronSights = true;
-
+					while (true)
+					{
+						int weaponEventId = hcw.IsEvent();
+						if (weaponEventId == -1)
+						{
+							break;
+						}
+	
+						if (weaponEventId == WeaponEvents.CHANGE_HIDE)
+						{
+							break;
+						}
+	
+						WeaponEventBase anim_event = WeaponAnimEventFactory(weaponEventId, GetDayZPlayerOwner(), NULL);
+						
+						if (LogManager.IsWeaponLogEnable())
+						{
+							wpnDebugPrint("[wpnfsm] " + Object.GetDebugName(weapon) + " HandleWeapons: event arrived " + typename.EnumToString(WeaponEvents, weaponEventId) + "(" + weaponEventId + ")  fsm_ev=" + anim_event.ToString());
+						}
+	
+						if (anim_event != NULL)
+						{
+							weapon.ProcessWeaponEvent(anim_event);
+						}
+					}
+	
+					if (hcw.IsActionFinished())
+					{
+						if (weapon.IsWaitingForActionFinish())
+						{
+							if (LogManager.IsWeaponLogEnable())
+							{
+								wpnDebugPrint("[wpnfsm] " + Object.GetDebugName(weapon) + " Weapon event: finished! notifying waiting state=" + weapon.GetCurrentState());
+							}
+							
+							weapon.ProcessWeaponEvent(new WeaponEventHumanCommandActionFinished(GetDayZPlayerOwner()));
+						}
+						else
+						{
+							if (LogManager.IsWeaponLogEnable())
+							{
+								wpnDebugPrint("[wpnfsm] " + Object.GetDebugName(weapon) + " Weapon event: ABORT! notifying running state=" + weapon.GetCurrentState());
+							}
+	
+							weapon.ProcessWeaponAbortEvent(new WeaponEventHumanCommandActionAborted(GetDayZPlayerOwner()));
+						}
+					}
+				}
+	
+				if (m_DeferredWeaponEvent)
+				{
 					if (LogManager.IsWeaponLogEnable())
 					{
-						fsmDebugSpam("[wpnfsm] " + Object.GetDebugName(weapon) + " Weapon event: resetting deferred event" + m_DeferredWeaponEvent.DumpToString());
+						wpnDebugPrint("[wpnfsm] " + Object.GetDebugName(weapon) + " Weapon event: deferred " + m_DeferredWeaponEvent.DumpToString());
 					}
-
-					m_DeferredWeaponEvent = NULL;
-					m_DeferredWeaponTimer.Stop();
-				}
-				else if (!m_DeferredWeaponTimer.IsRunning())
-				{
-					m_DeferredWeaponTimer.Run(3, this, "DeferredWeaponFailed");
+	
+					if (weapon.ProcessWeaponEvent(m_DeferredWeaponEvent))
+					{
+						exitIronSights = true;
+	
+						if (LogManager.IsWeaponLogEnable())
+						{
+							fsmDebugSpam("[wpnfsm] " + Object.GetDebugName(weapon) + " Weapon event: resetting deferred event" + m_DeferredWeaponEvent.DumpToString());
+						}
+	
+						m_DeferredWeaponEvent = NULL;
+						m_DeferredWeaponTimer.Stop();
+					}
+					else if (!m_DeferredWeaponTimer.IsRunning())
+					{
+						m_DeferredWeaponTimer.Run(3, this, "DeferredWeaponFailed");
+					}
 				}
 			}
 		}
@@ -615,6 +620,7 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 			{
 				src.ReadFromContext(ctx);
 				dst.ReadFromContext(ctx);
+				ClearInventoryReservationEx(dst.GetItem(), dst);
 				break;
 			}
 			case InventoryCommandType.HAND_EVENT:
@@ -622,6 +628,7 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 				HandEventBase e = HandEventBase.CreateHandEventFromContext(ctx);
 				src = e.GetSrc();
 				dst = e.GetDst();
+				e.ClearInventoryReservation();
 				break;
 			}
 			case InventoryCommandType.SWAP:
@@ -630,6 +637,9 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 				temp.ReadFromContext(ctx);
 				dst.ReadFromContext(ctx);
 				temp.ReadFromContext(ctx);
+				
+				ClearInventoryReservationEx(dst.GetItem(), dst);
+				ClearInventoryReservationEx(temp.GetItem(), temp);
 				break;
 			}
 			case InventoryCommandType.FORCESWAP:
@@ -966,6 +976,18 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 			return true;
 		}
 		
+		//TODO: hotfix solution
+		if (!validation.m_IsRemote && validation.m_IsJuncture && !MoveCheckExclusionMaskLocal(src,dst))
+		{
+			#ifdef ENABLE_LOGGING
+			if (LogManager.IsInventoryMoveLogEnable())
+			{
+				Debug.InventoryMoveLog("Failed - MoveCheckExclusionMaskLocal - condition failed locally", "SYNC_MOVE" , "n/a", "ProcessInputData", GetDayZPlayerOwner().ToString() );
+			}
+			#endif
+			return false;
+		}
+		
 		#ifdef ENABLE_LOGGING
 		if (LogManager.IsInventoryMoveLogEnable())
 		{
@@ -1006,17 +1028,27 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 		if (validation.m_IsRemote && !e.GetSrcEntity())
 		{
 			//! kumarjac: This indicates a failure in replication relationships as player full inventory should be synchronized always if player exists on the remote
-			
-			#ifdef ENABLE_LOGGING
-			if (LogManager.IsInventoryMoveLogEnable())
+			if (itemDst && (e.GetEventID() == HandEventID.SWAP || e.GetEventID() == HandEventID.FORCESWAP)) //presumed swap, replace with take
 			{
-				Debug.InventoryMoveLog("Failed - CheckRequestSrc", "HAND_EVENT" , "n/a", "ProcessInputData", e.m_Player.ToString() );
+				InventoryLocation srcNew = new InventoryLocation();
+				srcNew.Copy(e.GetSrc());
+				e = HandEventBase.HandEventFactory(HandEventID.TAKE, e.m_Player, srcNew);
+				
+				Error("[syncinv] HandleInputData remote swap event REPLACED with TAKE (cmd=HAND_EVENT, event=" + e.DumpToString() + "), src item is null! Continuing.");
 			}
-			#endif
-			
-			Error("[syncinv] HandleInputData remote input (cmd=HAND_EVENT, event=" + e.DumpToString() + ") dropped, item not in bubble");
-					
-			return true;
+			else
+			{
+				#ifdef ENABLE_LOGGING
+				if (LogManager.IsInventoryMoveLogEnable())
+				{
+					Debug.InventoryMoveLog("Failed - CheckRequestSrc", "HAND_EVENT" , "n/a", "ProcessInputData", e.m_Player.ToString() );
+				}
+				#endif
+				
+				Error("[syncinv] HandleInputData remote input (cmd=HAND_EVENT, event=" + e.DumpToString() + ") dropped, item not in bubble");
+						
+				return true;
+			}
 		}
 		
 		//! TODO(kumarjac):	Is this one correct to be 'RemoveMovableOverride' or are the other Validate methdos wrong with 'EnableMovableOverride'?
@@ -1452,8 +1484,25 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 			
 		if (GetDayZPlayerOwner().GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_CLIENT )
 		{
-			ClearInventoryReservationEx(dst1.GetItem(),dst1);
-			ClearInventoryReservationEx(dst2.GetItem(),dst2);
+			ClearInventoryReservationEx(dst1.GetItem(), dst1);
+			ClearInventoryReservationEx(dst2.GetItem(), dst2);
+		}
+		else
+		{
+			GetGame().ClearJunctureEx(GetDayZPlayerOwner(), dst1.GetItem());
+			GetGame().ClearJunctureEx(GetDayZPlayerOwner(), dst2.GetItem());
+		}
+		
+		//TODO: hotfix solution
+		if (!validation.m_IsRemote && validation.m_IsJuncture && !SwapCheckExclusionMaskLocal(src1,src2,dst1,dst2))
+		{
+			#ifdef ENABLE_LOGGING
+			if (LogManager.IsInventoryMoveLogEnable())
+			{
+				Debug.InventoryMoveLog("Failed - !SwapCheckExclusionMaskLocal - condition failed locally", "SYNC_MOVE" , "n/a", "ProcessInputData", GetDayZPlayerOwner().ToString() );
+			}
+			#endif
+			return false;
 		}
 		
 		#ifdef ENABLE_LOGGING
@@ -1471,88 +1520,6 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 
 			validation.m_Result = InventoryValidationResult.SUCCESS;
 		}
-		return true;
-	}
-
-	bool ValidateDestroy(inout Serializer ctx, InventoryValidation validation)
-	{
-		InventoryCommandType type = InventoryCommandType.DESTROY;
-
-		if (validation.m_IsJuncture)
-		{
-			/** TODO(kumarjac):
-			 *	Probably should be called through inventory juncture, 
-			 *	we shouldn't allow the client to delete until the 
-			 *	server says it is okay as there can be more reasons 
-			 *	than "cheater" for it to be rejected such as desync
-			 */
-			
-			return true;
-		}
-
-		InventoryLocation src = new InventoryLocation;
-		src.ReadFromContext(ctx);
-		
-		#ifdef ENABLE_LOGGING
-		if (LogManager.IsInventoryMoveLogEnable())
-		{
-			Debug.InventoryMoveLog("STS = " + GetDayZPlayerOwner().GetSimulationTimeStamp() + " src=" + InventoryLocation.DumpToStringNullSafe(src), "DESTROY" , "n/a", "ProcessInputData", GetDayZPlayerOwner().ToString() );	
-		}
-		#endif
-
-		if (validation.m_IsRemote && !src.GetItem())
-		{
-			#ifdef ENABLE_LOGGING
-			if (LogManager.IsInventoryMoveLogEnable())
-			{
-				Debug.InventoryMoveLog("Failed item not exist", "DESTROY" , "n/a", "ProcessInputData", GetDayZPlayerOwner().ToString() );	
-			}
-			#endif
-
-			Error("[syncinv] HandleInputData remote input (cmd=DESTROY) dropped, item not in bubble");
-			return true;
-		}
-		
-		//! Do not check for action validity on remotes or when performing through juncture. 
-		//! Juncture locks guarentee the item is safe to interact with and the server has validated the command at this point. 
-		//! Checking at this point is both wasteful and can result in a failure which leads to desync
-		if (!validation.m_IsRemote && !validation.m_IsJuncture && !PlayerCheckRequestSrc(src, GameInventory.c_MaxItemDistanceRadius))
-		{
-			#ifdef ENABLE_LOGGING
-			if (LogManager.IsInventoryMoveLogEnable())
-			{
-				Debug.InventoryMoveLog("Failed CheckRequestSrc", "DESTROY" , "n/a", "ProcessInputData", GetDayZPlayerOwner().ToString() );	
-			}
-			#endif
-
-			return true;
-		}
-
-		//! Do not check for action validity on remotes or when performing through juncture. 
-		//! Juncture locks guarentee the item is safe to interact with and the server has validated the command at this point. 
-		//! Checking at this point is both wasteful and can result in a failure which leads to desync
-		if (!validation.m_IsRemote && !validation.m_IsJuncture && !PlayerCheckDropRequest(src, GameInventory.c_MaxItemDistanceRadius))
-		{
-			#ifdef ENABLE_LOGGING
-			if (LogManager.IsInventoryMoveLogEnable())
-			{
-				Debug.InventoryMoveLog("Failed CheckDropRequest", "DESTROY" , "n/a", "ProcessInputData", GetDayZPlayerOwner().ToString() );	
-			}
-			#endif
-
-			return true;
-		}
-
-		#ifdef ENABLE_LOGGING
-		if (LogManager.IsInventoryMoveLogEnable())
-		{
-			Debug.InventoryMoveLog("Success ObjectDelete", "DESTROY" , "n/a", "ProcessInputData", GetDayZPlayerOwner().ToString() );	
-		}
-		#endif
-
-		GetGame().ObjectDelete(src.GetItem());
-
-		validation.m_Result = InventoryValidationResult.SUCCESS;
 		return true;
 	}
 
@@ -1574,7 +1541,7 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 			return false;
 		}
 
-		InventoryValidation validation();
+		InventoryValidation validation = new InventoryValidation();
 		validation.m_IsJuncture = isJuncture;
 		validation.m_IsRemote = isRemote;
 
@@ -1583,38 +1550,32 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 		
 		switch (type)
 		{
-		case InventoryCommandType.USER_RESERVATION_CANCEL:
-			if (!ValidateUserReservationCancel(serializer, validation))
-			{
-				return false;
-			}
-			break;
-		case InventoryCommandType.SYNC_MOVE:
-			if (!ValidateSyncMove(serializer, validation))
-			{
-				return false;
-			}
-			break;
-		case InventoryCommandType.HAND_EVENT:
-			if (!ValidateHandEvent(serializer, validation))
-			{
-				return false;
-			}
-			break;
-		case InventoryCommandType.SWAP:
-			if (!ValidateSwap(serializer, validation))
-			{
-				return false;
-			}
-			break;
-		case InventoryCommandType.DESTROY:
-			if (!ValidateDestroy(serializer, validation))
-			{
-				return false;
-			}
-			break;
-		default:
-			break;
+			case InventoryCommandType.USER_RESERVATION_CANCEL:
+				if (!ValidateUserReservationCancel(serializer, validation))
+				{
+					return false;
+				}
+				break;
+			case InventoryCommandType.SYNC_MOVE:
+				if (!ValidateSyncMove(serializer, validation))
+				{
+					return false;
+				}
+				break;
+			case InventoryCommandType.HAND_EVENT:
+				if (!ValidateHandEvent(serializer, validation))
+				{
+					return false;
+				}
+				break;
+			case InventoryCommandType.SWAP:
+				if (!ValidateSwap(serializer, validation))
+				{
+					return false;
+				}
+				break;
+			default:
+				break;
 		}
 
 		bool canSendJuncture = !isJuncture && GetDayZPlayerOwner().GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_SERVER;
@@ -1680,7 +1641,7 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 	
 	bool IsServerOrLocalPlayer()
 	{
-		return GetDayZPlayerOwner().GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_SERVER || GetDayZPlayerOwner() == GetGame().GetPlayer());
+		return (GetDayZPlayerOwner().GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_SERVER) || (GetDayZPlayerOwner() == GetGame().GetPlayer());
 	}
 	
 	bool StoreInputForRemotes (bool handling_juncture, bool remote, ParamsReadContext ctx)
@@ -1787,17 +1748,25 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 		}
 		if (!super.TakeToDst(mode,src,dst))
 		{
-			if (!m_DeferredEvent)
-			{
-				m_DeferredEvent = new DeferredTakeToDst(mode,src,dst);
-				if (m_DeferredEvent.ReserveInventory(this))
-					return true;
-			}
-			
-			m_DeferredEvent = null;
-			return false;
+			return PostDeferredEventTakeToDst(mode,src,dst);
 		}
 		return true;
+	}
+	
+	override bool PostDeferredEventTakeToDst(InventoryMode mode, notnull InventoryLocation src, notnull InventoryLocation dst)
+	{
+		if (!super.PostDeferredEventTakeToDst(mode,src,dst))
+			return false;
+		
+		if (!m_DeferredEvent)
+		{
+			m_DeferredEvent = new DeferredTakeToDst(mode,src,dst);
+			if (m_DeferredEvent.ReserveInventory(this))
+				return true;
+		}
+		
+		m_DeferredEvent = null;
+		return false;
 	}
 	
 	void HandleTakeToDst( DeferredEvent deferred_event )
@@ -1852,7 +1821,7 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 					}
 					#endif
 				
-					if (LocationCanMoveEntity(deferred_take_to_dst.m_src,deferred_take_to_dst.m_dst))
+					if (LocationCanMoveEntity(deferred_take_to_dst.m_src, deferred_take_to_dst.m_dst))
 					{
 						DayZPlayer player = GetGame().GetPlayer();
 						player.GetHumanInventory().AddInventoryReservationEx(deferred_take_to_dst.m_dst.GetItem(), deferred_take_to_dst.m_dst, GameInventory.c_InventoryReservationTimeoutShortMS);
@@ -1913,19 +1882,28 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 		
 		if(!super.SwapEntities(mode,item1,item2))
 		{
-			if(!m_DeferredEvent)
+			if (GameInventory.MakeSrcAndDstForSwap(item1, item2, src1, src2, dst1, dst2))
 			{
-				if( GameInventory.MakeSrcAndDstForSwap(item1, item2, src1, src2, dst1, dst2) );
-				{
-					m_DeferredEvent = new DeferredSwapEntities(mode, item1, item2, dst1, dst2);
-					if( m_DeferredEvent.ReserveInventory(this) )
-						return true;
-				}
+				return PostDeferredForceSwapEntities(mode, item1, item2, dst1, dst2);
 			}
-			m_DeferredEvent = null;
-			return false;
 		}
 		return true;
+	}
+	
+	override bool PostDeferredForceSwapEntities(InventoryMode mode, notnull EntityAI item1, notnull EntityAI item2, notnull InventoryLocation dst1, notnull InventoryLocation dst2)
+	{
+		if (!super.PostDeferredForceSwapEntities(mode, item1, item2, dst1, dst2))
+			return false;
+		
+		if (!m_DeferredEvent)
+		{
+			m_DeferredEvent = new DeferredForceSwapEntities(mode, item1, item2, dst1, dst2);
+			if (m_DeferredEvent.ReserveInventory(this))
+				return true;
+		}
+		
+		m_DeferredEvent = null;
+		return false;
 	}
 	
 	void HandleSwapEntities( DeferredEvent deferred_event )
@@ -2003,9 +1981,9 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 		}
 		#endif
 		
+		InventoryLocation src1, src2, dst1;
 		if( mode == InventoryMode.LOCAL )
 		{
-			InventoryLocation src1, src2, dst1;
 			if (GameInventory.MakeSrcAndDstForForceSwap(item1, item2, src1, src2, dst1, item2_dst))
 			{
 				LocationSwap(src1, src2, dst1, item2_dst);
@@ -2016,18 +1994,10 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 		
 		if(!super.ForceSwapEntities(mode,item1,item2,item2_dst))
 		{
-			if(!m_DeferredEvent)
+			if (GameInventory.MakeSrcAndDstForForceSwap(item1, item2, src1, src2, dst1, item2_dst))
 			{
-				if (GameInventory.MakeSrcAndDstForForceSwap(item1, item2, src1, src2, dst1, item2_dst))
-				{
-					m_DeferredEvent = new DeferredForceSwapEntities(mode,item1,item2, dst1, item2_dst);
-					if( m_DeferredEvent.ReserveInventory(this))
-						return true;
-
-				}
+				return PostDeferredForceSwapEntities(mode, item1, item2, dst1, item2_dst);
 			}
-			m_DeferredEvent = null;
-			return false;
 		}
 		
 		return true;
@@ -2071,7 +2041,7 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 					break;
 
 				case InventoryMode.JUNCTURE:
-					if (CanForceSwapEntitiesEx(deferred_force_swap_entities.m_dst1.GetItem(),deferred_force_swap_entities.m_dst1,deferred_force_swap_entities.m_dst2.GetItem(), deferred_force_swap_entities.m_dst2))
+					if (CanForceSwapEntitiesEx(deferred_force_swap_entities.m_dst1.GetItem(), deferred_force_swap_entities.m_dst1, deferred_force_swap_entities.m_dst2.GetItem(), deferred_force_swap_entities.m_dst2))
 					{	
 						player.GetHumanInventory().AddInventoryReservationEx(deferred_force_swap_entities.m_item1, deferred_force_swap_entities.m_dst1, GameInventory.c_InventoryReservationTimeoutShortMS);
 						player.GetHumanInventory().AddInventoryReservationEx(deferred_force_swap_entities.m_item2, deferred_force_swap_entities.m_dst2, GameInventory.c_InventoryReservationTimeoutShortMS);
@@ -2333,10 +2303,10 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 		{
 			EntityAI itemInHands = GetEntityInHands();
 			
-			InventoryLocation handInventoryLocation();
-			handInventoryLocation.SetHands(GetInventoryOwner(), itemInHands);
+			InventoryLocation il = new InventoryLocation();
+			il.SetHands(GetInventoryOwner(), itemInHands);
 			
-			InventoryValidation validation();
+			InventoryValidation validation = new InventoryValidation();
 			if (e.CanPerformEventEx(validation))
 			{
 				m_DeferredEvent = new DeferredHandEvent(mode, e);
@@ -2372,7 +2342,7 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 	void HandleHandEvent(DeferredEvent deferred_event)
 	{
 		//! Default structure suffices
-		InventoryValidation validation();
+		InventoryValidation validation = new InventoryValidation();
 		
 		DeferredHandEvent deferred_hand_event = DeferredHandEvent.Cast(deferred_event);
 		if (deferred_hand_event)
@@ -2648,4 +2618,115 @@ class DayZPlayerInventory : HumanInventoryWithFSM
 		
 		return result;
 	}
-};
+	
+	//! Local, checks only stuff that is in guaranteed sync
+	bool MoveCheckExclusionMaskLocal ( notnull InventoryLocation src, notnull InventoryLocation dst)
+	{
+		if (dst.GetType() == InventoryLocationType.ATTACHMENT)
+		{
+			return dst.GetParent().CheckAttachmentReceiveExclusion(src.GetItem(),dst.GetSlot());
+		}
+		
+		return true;
+	}
+	
+	//! Local, checks only stuff that is in guaranteed sync
+	bool SwapCheckExclusionMaskLocal ( notnull InventoryLocation src1, notnull InventoryLocation src2, notnull InventoryLocation dst1, notnull InventoryLocation dst2)
+	{
+		bool failed = false;
+		
+		if (dst1.GetType() == InventoryLocationType.ATTACHMENT)
+		{
+			failed |= !dst1.GetParent().CheckAttachmentReceiveExclusion(dst1.GetItem(),dst1.GetSlot());
+		}
+		
+		if (dst2.GetType() == InventoryLocationType.ATTACHMENT)
+		{
+			failed |= !dst2.GetParent().CheckAttachmentReceiveExclusion(dst2.GetItem(),dst2.GetSlot());
+		}
+		return !failed;
+	}
+	
+	//! DEPRECATED
+	bool ValidateDestroy(inout Serializer ctx, InventoryValidation validation)
+	{
+		InventoryCommandType type = InventoryCommandType.DESTROY;
+
+		if (validation.m_IsJuncture)
+		{
+			/** TODO(kumarjac):
+			 *	Probably should be called through inventory juncture, 
+			 *	we shouldn't allow the client to delete until the 
+			 *	server says it is okay as there can be more reasons 
+			 *	than "cheater" for it to be rejected such as desync
+			 */
+			
+			return true;
+		}
+
+		InventoryLocation src = new InventoryLocation;
+		src.ReadFromContext(ctx);
+		
+		#ifdef ENABLE_LOGGING
+		if (LogManager.IsInventoryMoveLogEnable())
+		{
+			Debug.InventoryMoveLog("STS = " + GetDayZPlayerOwner().GetSimulationTimeStamp() + " src=" + InventoryLocation.DumpToStringNullSafe(src), "DESTROY" , "n/a", "ProcessInputData", GetDayZPlayerOwner().ToString() );	
+		}
+		#endif
+
+		if (validation.m_IsRemote && !src.GetItem())
+		{
+			#ifdef ENABLE_LOGGING
+			if (LogManager.IsInventoryMoveLogEnable())
+			{
+				Debug.InventoryMoveLog("Failed item not exist", "DESTROY" , "n/a", "ProcessInputData", GetDayZPlayerOwner().ToString() );	
+			}
+			#endif
+
+			Error("[syncinv] HandleInputData remote input (cmd=DESTROY) dropped, item not in bubble");
+			return true;
+		}
+		
+		//! Do not check for action validity on remotes or when performing through juncture. 
+		//! Juncture locks guarentee the item is safe to interact with and the server has validated the command at this point. 
+		//! Checking at this point is both wasteful and can result in a failure which leads to desync
+		if (!validation.m_IsRemote && !validation.m_IsJuncture && !PlayerCheckRequestSrc(src, GameInventory.c_MaxItemDistanceRadius))
+		{
+			#ifdef ENABLE_LOGGING
+			if (LogManager.IsInventoryMoveLogEnable())
+			{
+				Debug.InventoryMoveLog("Failed CheckRequestSrc", "DESTROY" , "n/a", "ProcessInputData", GetDayZPlayerOwner().ToString() );	
+			}
+			#endif
+
+			return true;
+		}
+
+		//! Do not check for action validity on remotes or when performing through juncture. 
+		//! Juncture locks guarentee the item is safe to interact with and the server has validated the command at this point. 
+		//! Checking at this point is both wasteful and can result in a failure which leads to desync
+		if (!validation.m_IsRemote && !validation.m_IsJuncture && !PlayerCheckDropRequest(src, GameInventory.c_MaxItemDistanceRadius))
+		{
+			#ifdef ENABLE_LOGGING
+			if (LogManager.IsInventoryMoveLogEnable())
+			{
+				Debug.InventoryMoveLog("Failed CheckDropRequest", "DESTROY" , "n/a", "ProcessInputData", GetDayZPlayerOwner().ToString() );	
+			}
+			#endif
+
+			return true;
+		}
+
+		#ifdef ENABLE_LOGGING
+		if (LogManager.IsInventoryMoveLogEnable())
+		{
+			Debug.InventoryMoveLog("Success ObjectDelete", "DESTROY" , "n/a", "ProcessInputData", GetDayZPlayerOwner().ToString() );	
+		}
+		#endif
+
+		GetGame().ObjectDelete(src.GetItem());
+
+		validation.m_Result = InventoryValidationResult.SUCCESS;
+		return true;
+	}
+}

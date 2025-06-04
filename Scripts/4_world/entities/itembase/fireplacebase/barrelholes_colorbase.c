@@ -29,7 +29,6 @@ class BarrelHoles_ColorBase extends FireplaceBase
 		m_LightDistance = 50;
 		
 		//! universal temperature sources overrides
-		m_UTSSettings.m_TemperatureMax			= PARAM_OUTDOOR_FIRE_TEMPERATURE;
 		m_UTSSettings.m_TemperatureItemCap 		= GameConstants.ITEM_TEMPERATURE_NEUTRAL_ZONE_MIDDLE;
 		m_UTSSettings.m_TemperatureCap			= 20;
 		
@@ -144,20 +143,6 @@ class BarrelHoles_ColorBase extends FireplaceBase
 		{
 			//Refresh particles and sounds
 			RefreshFireParticlesAndSounds(false);
-			
-			//sound sync
-			if (IsSoundSynchRemote() && !IsBeingPlaced() && m_Initialized)
-			{
-				if (IsOpen())
-				{
-					SoundBarrelOpenPlay();
-				}
-				
-				if (!IsOpen())
-				{
-					SoundBarrelClosePlay();
-				}
-			}
 		}
 		
 		UpdateVisualState();
@@ -290,21 +275,16 @@ class BarrelHoles_ColorBase extends FireplaceBase
 			m_SmokingSlots[3] = null;
 		break;
 		}
-
-		// cookware-specifics (remove audio visuals)
-		if (item_base.Type() == ATTACHMENT_CAULDRON || item_base.Type() == ATTACHMENT_COOKING_POT)
+		
+		if (item_base.IsCookware())
 		{
 			ClearCookingEquipment(item_base);
-			Bottle_Base cooking_pot = Bottle_Base.Cast(item);
-			cooking_pot.RemoveAudioVisualsOnClient();	
+			item_base.RemoveAudioVisualsOnClient();	
 		}
-		if (item_base.Type() == ATTACHMENT_FRYING_PAN)
-		{
-			ClearCookingEquipment(item_base);
-			FryingPan frying_pan = FryingPan.Cast(item);
-			frying_pan.RemoveAudioVisualsOnClient();
-		}
-
+		
+		if (item_base.IsLiquidContainer()) //boiling bottle effects stop
+			item_base.RemoveAudioVisualsOnClient();
+		
 		RefreshFireplaceVisuals();
 	}
 	
@@ -344,9 +324,6 @@ class BarrelHoles_ColorBase extends FireplaceBase
 			return false;
 		
 		if (GetHealthLevel() == GameConstants.STATE_RUINED)
-			return false;
-
-		if (GetHierarchyParent())
 			return false;
 
 		return true;
@@ -418,7 +395,6 @@ class BarrelHoles_ColorBase extends FireplaceBase
 	{
 		m_Openable.Open();
 		
-		SoundSynchRemote();
 		SetTakeable(false);
 		UpdateVisualState();
 	}
@@ -436,7 +412,6 @@ class BarrelHoles_ColorBase extends FireplaceBase
 	{
 		m_Openable.Close();
 		
-		SoundSynchRemote();
 		SetTakeable(true);
 		UpdateVisualState();
 	}
@@ -517,7 +492,7 @@ class BarrelHoles_ColorBase extends FireplaceBase
 		return IsBurning();
 	}
 	
-	override void OnIgnitedTarget(EntityAI ignited_item)
+	override void OnIgnitedTarget(EntityAI target_item)
 	{
 	}
 	
@@ -532,18 +507,6 @@ class BarrelHoles_ColorBase extends FireplaceBase
 		StartFire(); 
 	}
 
-	void SoundBarrelOpenPlay()
-	{
-		EffectSound sound =	SEffectManager.PlaySound("barrel_open_SoundSet", GetPosition());
-		sound.SetAutodestroy(true);
-	}
-	
-	void SoundBarrelClosePlay()
-	{
-		EffectSound sound =	SEffectManager.PlaySound("barrel_close_SoundSet", GetPosition());
-		sound.SetAutodestroy(true);
-	}
-	
 	void DestroyClutterCutter(Object clutter_cutter)
 	{
 		GetGame().ObjectDelete(clutter_cutter);
@@ -566,13 +529,32 @@ class BarrelHoles_ColorBase extends FireplaceBase
 		return true;	
 	}
 	
-	//================================================================
-	// ADVANCED PLACEMENT
-	//================================================================
+	string GetBarrelOpenSoundset()
+	{
+		return "barrel_open_SoundSet";
+	}
 	
-	override string GetPlaceSoundset()
+	string GetBarrelCloseSoundset()
+	{
+		return "barrel_close_SoundSet";
+	}
+	
+	override string GetDeploySoundset()
 	{
 		return "placeBarrel_SoundSet";
+	}
+	
+	override void InitItemSounds()
+	{
+		super.InitItemSounds();
+		
+		ItemSoundHandler handler = GetItemSoundHandler();
+		
+		if (GetBarrelOpenSoundset() != string.Empty)
+			handler.AddSound(SoundConstants.ITEM_BARREL_OPEN, GetBarrelOpenSoundset());
+	
+		if (GetBarrelCloseSoundset() != string.Empty)
+			handler.AddSound(SoundConstants.ITEM_BARREL_CLOSE, GetBarrelCloseSoundset());
 	}
 	
 	override void SetActions()
@@ -592,4 +574,8 @@ class BarrelHoles_ColorBase extends FireplaceBase
 		super.OnDebugSpawn();
 		m_Openable.Close();
 	}
+	
+	// DEPRECATED
+	void SoundBarrelOpenPlay();
+	void SoundBarrelClosePlay();
 }

@@ -130,7 +130,7 @@ class GesturesMenu extends UIScriptedMenu
 	//============================================
 	void GesturesMenu()
 	{
-		m_GestureItems = new ref array<ref GestureMenuItem>;
+		m_GestureItems = new array<ref GestureMenuItem>;
 		
 		if ( !instance )
 		{
@@ -328,7 +328,7 @@ class GesturesMenu extends UIScriptedMenu
 		UpdateControlsElements();
 	}
 	
-	protected void GetGestureItems( out ref array<ref GestureMenuItem> gesture_items, GestureCategories category )
+	protected void GetGestureItems( out array<ref GestureMenuItem> gesture_items, GestureCategories category )
 	{
 		gesture_items.Clear();
 		

@@ -1,11 +1,14 @@
+enum EPlantState
+{
+	PAUSED = 0,
+	GROWING,
+	MATURE,
+	SPOILED,
+	DRY
+}
+
 class PlantBase extends ItemBase
 {
-	// Plant states
-	static const int STATE_DRY 					= 0;
-	static const int STATE_GROWING 				= 1;
-	static const int STATE_MATURE 				= 2;
-	static const int STATE_SPOILED 				= 3;
-
 	private float 	m_SprayUsage; // How much spray is needed to stop infestation of plant
 	
 	private float 	m_InfestationChance;
@@ -16,9 +19,9 @@ class PlantBase extends ItemBase
 	private string 	m_CropsType; 
 	private float 	m_PlantMaterialMultiplier; 
 	
-	private int 	m_PlantState;
 	private int 	m_PlantStateIndex;
 	private float 	m_CurrentPlantMaterialQuantity;
+	protected EPlantState m_PlantState;
 	
 	private bool 	m_IsInfested;
 	private float 	m_SprayQuantity;
@@ -28,21 +31,26 @@ class PlantBase extends ItemBase
 	int 	m_SpoiledRemoveTime;			// For how long in seconds a spoiled plant will exist
 	int 	m_FullMaturityTime;				// How much time needs plant to be full grown in seconds
 	int 	m_SpoilAfterFullMaturityTime;	// How long in seconds it takes for plant to be spoiled after it is full grown
-	int 	m_StateChangeTime;				// For how long in seconds will plant stay in one state before its going to next state
+	float 	m_StateChangeTime;				// For how long in seconds will plant stay in one state before its going to next state
 	
-    ref Timer m_GrowthTimer = NULL;
-    ref Timer m_InfestationTimer = NULL;
-    ref Timer m_SpoilAfterFullMaturityTimer = NULL;
-    ref Timer m_SpoiledRemoveTimer = NULL;
-	ref Timer m_DeleteDryPlantTimer = NULL;
+	protected ref Timer m_TimeTicker;
+	protected float m_TimeTracker;
 	
 	private GardenBase m_GardenBase = NULL;
 	private ref Slot m_Slot = NULL;
 	
 	private PluginHorticulture m_ModuleHorticulture;
 	
-	private const float SPOIL_AFTER_MATURITY_TIME = 14400; //The time it takes for a fully grown plant to spoil, in seconds
+	private const float SPOIL_AFTER_MATURITY_TIME = 14400.0; //The time it takes for a fully grown plant to spoil, in seconds (4 hours)
+	private const int TICK_FREQUENCY = 1; // seconds
 	
+	// debug
+	static int m_DebugFullMaturityTime;
+	static int m_DebugSpoilTime;
+	static int m_DebugSpoilRemoveTime;
+	static int m_DebugDeleteDryTime;
+	static float m_DebugTickSpeedMultiplier = 1;
+		
 	void PlantBase()
 	{
 		m_ModuleHorticulture = PluginHorticulture.Cast( GetPlugin( PluginHorticulture ) );
@@ -50,14 +58,16 @@ class PlantBase extends ItemBase
 		m_SprayUsage = 5;
 		m_DeleteDryPlantTime = (60 * 10) + Math.RandomInt(0, 60 * 2);
 		m_SpoiledRemoveTime = (60 * 20) + Math.RandomInt(0, 60 * 5);
-		
-		//Must be between 0 and 1
-		m_InfestationChance = 0.2; // Temporarily disabled until its fixed. Infestation is not visualy persistent over server restarts and m_SpoiledRemoveTimer crashes when it's meant to delete the plant.
-		
+				
 		string plant_type = this.GetType();
 		m_GrowthStagesCount = GetGame().ConfigGetInt( "cfgVehicles " + plant_type + " Horticulture GrowthStagesCount" );
 		m_CropsCount = GetGame().ConfigGetInt( "cfgVehicles " + plant_type + " Horticulture CropsCount" );
 		GetGame().ConfigGetText( "cfgVehicles " + plant_type + " Horticulture CropsType", m_CropsType );
+		
+		if (m_GrowthStagesCount == 0)
+			m_GrowthStagesCount = 1;
+		
+		m_InfestationChance = 0.2 / m_GrowthStagesCount; //Must be between 0 and 1
 
 		m_PlantStateIndex = -1;
 		m_CurrentPlantMaterialQuantity = 0;
@@ -67,15 +77,23 @@ class PlantBase extends ItemBase
 		
 		SetTakeable( false );
 		
-		
 		RegisterNetSyncVariableBool("m_HasCrops");
 		RegisterNetSyncVariableInt("m_PlantState");
 		RegisterNetSyncVariableInt("m_PlantStateIndex");
+		
+		if (GetGame().IsServer())
+		{
+			m_TimeTicker = new Timer( CALL_CATEGORY_SYSTEM );
+			m_TimeTicker.Run(TICK_FREQUENCY, this, "Tick", NULL, true);
+		}
 	}
 
 	void ~PlantBase()
 	{
-		if (!m_MarkForDeletion)
+		if (m_TimeTicker)
+			m_TimeTicker.Stop();
+		
+		if (!m_MarkForDeletion && !IsPendingDeletion())
 		{
 			DestroyPlant();
 		}
@@ -85,14 +103,23 @@ class PlantBase extends ItemBase
 	{
 		m_GardenBase = garden_base;
 		
-		m_FullMaturityTime += Math.RandomInt(-60,180);
-		float divided = /*(float) ((60 * 5) + Math.RandomInt(0, 60 * 1)) / fertility;*/ m_FullMaturityTime;
+		if (m_DebugFullMaturityTime != 0)
+			m_FullMaturityTime = m_DebugFullMaturityTime;
+		else
+			m_FullMaturityTime += Math.RandomInt(-60,180);
 		
-		//divided = (float)((60 * 30) + Math.RandomInt(0, 60 * 30)) * fertility;
-		m_SpoilAfterFullMaturityTime = SPOIL_AFTER_MATURITY_TIME; //divided;
+		if (m_DebugSpoilTime != 0)
+			m_SpoilAfterFullMaturityTime = m_DebugSpoilTime;
+		else 
+			m_SpoilAfterFullMaturityTime = SPOIL_AFTER_MATURITY_TIME;
+		
+		if (m_DebugSpoilRemoveTime != 0)
+			m_SpoiledRemoveTime = m_DebugSpoilRemoveTime;
+		
+		if (m_DebugDeleteDryTime != 0)
+			m_DeleteDryPlantTime = m_DebugDeleteDryTime;
 
-		divided = (float)((float)m_FullMaturityTime / ((float)m_GrowthStagesCount - 2.0));
-		m_StateChangeTime = divided;
+		m_StateChangeTime = m_FullMaturityTime / (m_GrowthStagesCount - 2);
 
 		float count = m_CropsCount * fertility * harvesting_efficiency;
 		m_CropsCount = (int)Math.Ceil( count );
@@ -100,46 +127,66 @@ class PlantBase extends ItemBase
 		m_PlantMaterialMultiplier = 0.1 * harvesting_efficiency;
 		
 		float rain_intensity = GetGame().GetWeather().GetRain().GetActual();
-		if ( rain_intensity > 0.0 )
+		
+		if (m_PlantState < EPlantState.MATURE  &&  !NeedsWater())		
 		{
-			CheckWater();
+			SetPlantState(EPlantState.GROWING);
+			GrowthTimerTick(); // first tick happens straight away
 		}
-		else
-		{
-			CheckWater();
-			
-			if ( NeedsWater() )
-			{
-				SetPlantState(STATE_DRY);
-				
-				if (GetGame().IsServer())
-				{
-					m_DeleteDryPlantTimer = new Timer( CALL_CATEGORY_SYSTEM );
-					m_DeleteDryPlantTimer.Run( m_DeleteDryPlantTime, this, "DeleteDryPlantTick", NULL, false );
-				}
-			}
+		
+		if (rain_intensity <= 0.0)
+		{		
+			if (NeedsWater())
+				SetPlantState(EPlantState.PAUSED);
 		}
 	}
-
+	
+	void Tick()
+	{
+		m_TimeTracker += m_TimeTicker.GetDuration() * m_DebugTickSpeedMultiplier;
+		
+		switch (m_PlantState)
+		{
+			case (EPlantState.GROWING):
+				if (m_TimeTracker >= m_StateChangeTime)
+					GrowthTimerTick();
+					
+				break;
+						
+			case (EPlantState.MATURE):
+				if (m_TimeTracker >= m_SpoilAfterFullMaturityTime)
+					SetSpoiled();
+			
+				break;
+			
+			case (EPlantState.SPOILED):
+				if (m_TimeTracker >= m_SpoiledRemoveTime)
+					RemoveSlot();
+				
+				break;
+			
+			case (EPlantState.DRY):
+				if (m_TimeTracker >= m_DeleteDryPlantTime)
+					RemoveSlot();
+			
+				break;
+		}
+		
+	}
 	
 	override bool OnStoreLoad( ParamsReadContext ctx, int version )
 	{
 		if ( !super.OnStoreLoad( ctx, version ) )
 			return false;
 		
-		//Print("Plant - OnStoreLoad - ");
-		
 		GardenBase garden = GardenBase.Cast( GetHierarchyParent() );
-		//Print(garden);
-		
+
 		int slot_index = -1;
-		ctx.Read( slot_index );
-		
-		//Print(slot_index);
+		if (!ctx.Read(slot_index))
+			return false;
 		
 		Slot slot = garden.GetSlotByIndex(slot_index);
-		//Print(slot);
-		
+
 		SetSlot(slot);
 
 		if ( !OnStoreLoadCustom( ctx, version ) )
@@ -165,8 +212,8 @@ class PlantBase extends ItemBase
 		}
 		else
 		{
+			ErrorEx("[Warning] A plant existed without a garden. Therefore it was deleted from the world to prevent issues! Position: " + GetPosition(), ErrorExSeverity.INFO);
 			GetGame().ObjectDelete(this); // Plants that exist without a garden must be deleted. Otherwise they might cause problems.
-			Print("Warning! A plant existed without a garden. Therefore it was deleted from the world to prevent issues!");
 		}
 	}
 	
@@ -174,105 +221,70 @@ class PlantBase extends ItemBase
 	{
 		return m_CropsType;
 	}
-	
-	
-	bool OnStoreLoadCustom( ParamsReadContext ctx, int version )
+
+	bool OnStoreLoadCustom(ParamsReadContext ctx, int version)
 	{
-		int loadInt;
-		if ( !ctx.Read( loadInt ) )
-			loadInt = 0;
-		
-		m_SprayUsage = loadInt;
-		
-		loadInt = 0;
-		if ( !ctx.Read( loadInt ) )
-			loadInt = 5;
-		
-		m_DeleteDryPlantTime = loadInt;
-		
-		loadInt = 0;
-		if ( !ctx.Read( loadInt ) )
-			 loadInt = 5;
-		m_SpoiledRemoveTime = loadInt;
-		
-		loadInt = 0;
-		if ( !ctx.Read( loadInt ) )
-			loadInt = 300;
-		m_FullMaturityTime = loadInt;
-		
-		loadInt = 0;
-		if ( !ctx.Read( loadInt ) )
-			loadInt = 300;
-		m_SpoilAfterFullMaturityTime = loadInt;
-		
-		loadInt = 0;
-		if ( !ctx.Read( loadInt ) )
+		if (!ctx.Read(m_SprayUsage))
 			return false;
-		m_StateChangeTime = loadInt;
+			
+		if (!ctx.Read(m_DeleteDryPlantTime))
+			return false;
+			
+		if (!ctx.Read(m_SpoiledRemoveTime))
+			return false;
+			
+		if (!ctx.Read(m_FullMaturityTime))
+			return false;
+			
+		if (!ctx.Read(m_SpoilAfterFullMaturityTime))
+			return false;
+			
+		if (!ctx.Read(m_StateChangeTime))
+			return false;
+			
+		if (!ctx.Read(m_InfestationChance))
+			return false;
+			
+		if (!ctx.Read(m_GrowthStagesCount))
+			return false;
+			
+		if (!ctx.Read(m_CropsCount))
+			return false;
+			
+		if (!ctx.Read(m_CropsType))
+			return false;
+			
+		if (!ctx.Read(m_PlantMaterialMultiplier))
+			return false;
+			
+		if (!ctx.Read(m_PlantState))
+			return false;
+			
+		if (!ctx.Read(m_PlantStateIndex))
+			return false;
+			
+		if (!ctx.Read(m_CurrentPlantMaterialQuantity))
+			return false;
+
+		if (!ctx.Read(m_IsInfested))
+			return false;
+			
+		if (!ctx.Read(m_SprayQuantity))
+			return false;
+		
+		bool loadBool;	// deprec
+		if (!ctx.Read(loadBool))
+			return false;
 		
 		float loadFloat = 0.0;
-		if ( !ctx.Read( loadFloat ) )
-			loadFloat = 0;
-		m_InfestationChance = loadFloat;
-		
-		loadInt = 0;
-		if ( !ctx.Read( loadInt ) )
+		if (!ctx.Read(loadFloat))	// deprec
 			return false;
-		m_GrowthStagesCount = loadInt;
-		
-		loadInt = 0;
-		if ( !ctx.Read( loadInt ) )
-			loadInt = 1;
-		m_CropsCount = loadInt;
-		
-		string loadString = "";
-		if ( !ctx.Read( loadString ) )
-			return false;
-		m_CropsType = loadString;
 		
 		loadFloat = 0.0;
-		if ( !ctx.Read( loadFloat ) )
-			loadFloat = 1;
-		m_PlantMaterialMultiplier = loadFloat;
-		
-		loadInt = 0;
-		if ( !ctx.Read( loadInt ) )
-			loadInt = 1;
-		m_PlantState = loadInt;
-		
-		loadInt = 0;
-		if ( !ctx.Read( loadInt ) )
-			loadInt = 0;
-		m_PlantStateIndex = loadInt;
-		
-		loadFloat = 0.0;
-		if ( !ctx.Read( loadFloat ) )
-			loadFloat = 1;
-		m_CurrentPlantMaterialQuantity = loadFloat;
-		
-		bool loadBool = false;
-		if ( !ctx.Read( loadBool ) )
-			loadBool = false;
-		m_IsInfested = loadBool;
-		 
-		loadFloat = 0.0;
-		if ( !ctx.Read( loadFloat ) )
-			loadFloat = 0;
-		m_SprayQuantity = loadFloat;
-		
-		
-		
-		loadBool = false;
-		if ( ctx.Read( loadBool ) )
+		if (ctx.Read(loadFloat))
 		{
-			if ( loadBool )
-			{
-				if (GetGame().IsServer())
-				{
-					m_GrowthTimer = new Timer( CALL_CATEGORY_SYSTEM );
-					m_GrowthTimer.Run( m_StateChangeTime, this, "GrowthTimerTick", NULL, true );
-				}
-			}
+			if (loadFloat > 0.0)
+				m_TimeTracker = loadFloat;	// spoil
 		}
 		else
 		{
@@ -280,75 +292,38 @@ class PlantBase extends ItemBase
 		}
 		
 		loadFloat = 0.0;
-		if ( ctx.Read( loadFloat ) )
+		if (ctx.Read(loadFloat))
+		{
+			if (loadFloat > 0.0)
+				m_TimeTracker = loadFloat; // spoil delete
+		}
+		else
+		{
+			return false;
+		}
+		
+		loadFloat = 0.0;
+		if (ctx.Read(loadFloat))
 		{
 			if ( loadFloat > 0.0 )
-			{
-				if (GetGame().IsServer())
-				{
-					m_InfestationTimer = new Timer( CALL_CATEGORY_SYSTEM );
-					m_InfestationTimer.Run( loadFloat, this, "InfestationTimerTick", NULL, false );
-				}
-			}
+				m_TimeTracker = loadFloat;	// dry delete
 		}
 		else
 		{
 			return false;
 		}
 		
-		loadFloat = 0.0;
-		if ( ctx.Read( loadFloat ) )
+		if (m_StateChangeTime != (m_FullMaturityTime / (m_GrowthStagesCount - 2)))
 		{
-			if ( loadFloat > 0.0 )
-			{
-				if (GetGame().IsServer())
-				{
-					m_SpoilAfterFullMaturityTimer = new Timer( CALL_CATEGORY_SYSTEM );
-					m_SpoilAfterFullMaturityTimer.Run( loadFloat, this, "SetSpoiled", NULL, false );
-				}
-			}
-		}
-		else
-		{
-			return false;
+			m_StateChangeTime = m_FullMaturityTime / (m_GrowthStagesCount - 2);
+			ErrorEx("[Warning] A plant loaded from storage had a corrupted state change time. Time was now adjusted! Position: " + GetPosition(), ErrorExSeverity.INFO);
 		}
 		
-		loadFloat = 0.0;
-		if ( ctx.Read( loadFloat ) )
+		if (version >= 142)
 		{
-			if ( loadFloat > 0.0 )
-			{
-				if (GetGame().IsServer())
-				{
-					if (!m_SpoiledRemoveTimer)
-						m_SpoiledRemoveTimer = new Timer( CALL_CATEGORY_SYSTEM );
-					
-					m_SpoiledRemoveTimer.Run( loadFloat, this, "SpoiledRemoveTimerTick", NULL, false );
-				}
-			}
+			if (!ctx.Read(m_HasCrops))
+				return false;
 		}
-		else
-		{
-			return false;
-		}
-		
-		loadFloat = 0.0;
-		if ( ctx.Read( loadFloat ) )
-		{
-			if ( loadFloat > 0.0 )
-			{
-				if (GetGame().IsServer())
-				{
-					m_DeleteDryPlantTimer = new Timer( CALL_CATEGORY_SYSTEM );
-					m_DeleteDryPlantTimer.Run( loadFloat, this, "DeleteDryPlantTick", NULL, false );
-				}
-			}
-		}
-		else
-		{
-			return false;
-		}
-		
 
 		UpdatePlant();
 		return true;
@@ -356,72 +331,51 @@ class PlantBase extends ItemBase
 
 	void OnStoreSaveCustom( ParamsWriteContext ctx )
 	{
-		ctx.Write( m_SprayUsage );
+		ctx.Write(m_SprayUsage);
+		ctx.Write(m_DeleteDryPlantTime);
+		ctx.Write(m_SpoiledRemoveTime);
+		ctx.Write(m_FullMaturityTime);
+		ctx.Write(m_SpoilAfterFullMaturityTime);
+		ctx.Write(m_StateChangeTime);
+		ctx.Write(m_InfestationChance);
+		ctx.Write(m_GrowthStagesCount);
+		ctx.Write(m_CropsCount);
+		ctx.Write(m_CropsType);
+		ctx.Write(m_PlantMaterialMultiplier);
+		ctx.Write(m_PlantState);
+		ctx.Write(m_PlantStateIndex);
+		ctx.Write(m_CurrentPlantMaterialQuantity);
+		ctx.Write(m_IsInfested);
+		ctx.Write(m_SprayQuantity);
 		
-		ctx.Write( m_DeleteDryPlantTime );
+		bool saveBool = false;	// deprec
+		ctx.Write( saveBool );	
 		
-		ctx.Write( m_SpoiledRemoveTime );
+		float saveFloat = 0.0;	// deprec
+		ctx.Write( saveFloat );
 		
-		ctx.Write( m_FullMaturityTime );
-		
-		ctx.Write( m_SpoilAfterFullMaturityTime );
-		
-		ctx.Write( m_StateChangeTime );
-		
-		ctx.Write( m_InfestationChance );
-		
-		ctx.Write( m_GrowthStagesCount );
-		
-		ctx.Write( m_CropsCount );
-		
-		ctx.Write( m_CropsType );
-		
-		ctx.Write( m_PlantMaterialMultiplier );
-		
-		ctx.Write( m_PlantState );
-		
-		ctx.Write( m_PlantStateIndex );
-		
-		ctx.Write( m_CurrentPlantMaterialQuantity );
-		
-		ctx.Write( m_IsInfested );
-		 
-		ctx.Write( m_SprayQuantity );
-		
-		bool saveBool = false;
-		if ( m_GrowthTimer != NULL )
+		saveFloat = 0.0;
+		if (m_PlantState == EPlantState.MATURE)
 		{
-			saveBool = true;
-		}
-		ctx.Write( saveBool );
-		
-		float saveFloat = 0.0;
-		if ( m_InfestationTimer != NULL )
-		{
-			saveFloat = m_InfestationTimer.GetRemaining();
+			saveFloat = m_TimeTracker;
 		}
 		ctx.Write( saveFloat );
 		
 		saveFloat = 0.0;
-		if ( m_SpoilAfterFullMaturityTimer != NULL )
+		if (m_PlantState == EPlantState.SPOILED)
 		{
-			saveFloat = m_SpoilAfterFullMaturityTimer.GetRemaining();
+			saveFloat = m_TimeTracker;
 		}
 		ctx.Write( saveFloat );
 		
 		saveFloat = 0.0;
-		if ( m_SpoiledRemoveTimer != NULL )
+		if (m_PlantState == EPlantState.DRY)
 		{
-			saveFloat = m_SpoiledRemoveTimer.GetRemaining();
+			saveFloat = m_TimeTracker;
 		}
 		ctx.Write( saveFloat );
 		
-		saveFloat = 0.0;
-		if ( m_DeleteDryPlantTimer != NULL )
-		{
-			saveFloat = m_DeleteDryPlantTimer.GetRemaining();
-		}
-		ctx.Write( saveFloat );
+		ctx.Write(m_HasCrops);
 	}
 	
 	void PrintValues()
@@ -429,14 +383,19 @@ class PlantBase extends ItemBase
 		Print("PRINT ALL VALUES OF PLANT...");
 		Print(this);
 		
+		Print(m_GrowthStagesCount);
 		Print(m_HasCrops);
-		Print(m_PlantState);
+		Print(typename.EnumToString(EPlantState, m_PlantState));
 		Print(m_PlantStateIndex);
 		Print(m_CurrentPlantMaterialQuantity);
 		Print(m_IsInfested);
 		Print(m_SprayQuantity);
 		Print(m_Slot);
 		Print(m_GardenBase);
+		Print(m_StateChangeTime);
+		Print(m_FullMaturityTime);
+		Print(m_SpoilAfterFullMaturityTime);
+		Print(m_TimeTracker);
 		Print("----------------------------------------------------------");
 	}
 	
@@ -445,12 +404,12 @@ class PlantBase extends ItemBase
 		return super.CanPutInCargo(parent);
 	}
 
-	override bool CanPutIntoHands( EntityAI player )
+	override bool CanPutIntoHands( EntityAI parent )
 	{
 		return super.CanPutIntoHands(parent);
 	}
 
-	override bool CanRemoveFromHands( EntityAI player )
+	override bool CanRemoveFromHands( EntityAI parent )
 	{
 		return false;
 	}
@@ -521,121 +480,45 @@ class PlantBase extends ItemBase
 
 	void GrowthTimerTick()
 	{
-		if ( IsGrowing() )
-		{
-			if ( m_PlantStateIndex < m_GrowthStagesCount - 2 )
-			{
-				m_PlantStateIndex++;
-				UpdatePlant();
-				SetSynchDirty();
-				
-				if ( m_PlantStateIndex == 0 )
-				{
-					float infestation_time_min = (float)m_FullMaturityTime * 0.2;
-					int int_infestation_time_min = (int)infestation_time_min;
-					
-					float infestation_time_max = (float)m_FullMaturityTime * 0.6;
-					int int_infestation_time_max = (int)infestation_time_max;
-					
-					if (GetGame().IsServer())
-					{
-						if (!m_InfestationTimer)
-							m_InfestationTimer = new Timer( CALL_CATEGORY_SYSTEM );
-						
-						m_InfestationTimer.Run( Math.RandomInt(int_infestation_time_min, int_infestation_time_max), this, "InfestationTimerTick", NULL, false );
-					}
-				}
-					
-				if ( m_PlantStateIndex == m_GrowthStagesCount - 2 )
-				{
-					if ( m_IsInfested )
-					{
-						SetSpoiled();
-					}
-					else
-					{
-						SetPlantState(STATE_MATURE);
-					}
-				}
-			}
-		}
-		else if ( IsMature() )
-		{
-			if (GetGame().IsServer())
-			{
-				if (!m_SpoilAfterFullMaturityTimer)
-					m_SpoilAfterFullMaturityTimer = new Timer( CALL_CATEGORY_SYSTEM );
-				
-				if ( !m_SpoilAfterFullMaturityTimer.IsRunning() )
-					m_SpoilAfterFullMaturityTimer.Run( m_SpoilAfterFullMaturityTime, this, "SetSpoiled", NULL, false );
-			}
-		}
-	}
-
-	void InfestationTimerTick()
-	{
-		float infestation_rnd = Math.RandomFloat01();
+		m_TimeTracker = 0;
 		
-		if ( m_InfestationChance > infestation_rnd )
-		{
-			ChangeInfestation( true );
-		}
-	}
-
-	void SpoiledRemoveTimerTick()
-	{
-		if ( m_GrowthTimer != NULL )
-		{
-			m_GrowthTimer.Stop();
-		}
-		
-		RemoveSlot();
-	}
-	
-	void DeleteDryPlantTick()
-	{
-		/*if ( IsDry() )
-		{
-			RemoveSlot();
-		}*/
-	}
-
-	void SetSpoiled()
-	{
-		if ( IsSpoiled() == false )
+		if ( m_PlantStateIndex < m_GrowthStagesCount - 2 )
 		{
 			m_PlantStateIndex++;
-			SetPlantState(STATE_SPOILED);
 			UpdatePlant();
 			SetSynchDirty();
 			
-			if (GetGame().IsServer())
-			{
-				if (!m_SpoiledRemoveTimer)
-					m_SpoiledRemoveTimer = new Timer( CALL_CATEGORY_SYSTEM );
+			float infestation_rnd = Math.RandomFloat01();
+			if ( m_InfestationChance > infestation_rnd )
+				ChangeInfestation(true);
 				
-				if (!m_SpoiledRemoveTimer.IsRunning())
-					m_SpoiledRemoveTimer.Run( m_SpoiledRemoveTime, this, "SpoiledRemoveTimerTick", NULL, false );
+			if ( m_PlantStateIndex == m_GrowthStagesCount - 2 )
+			{
+				if (m_IsInfested)
+					SetDry();
+				else
+					SetPlantState(EPlantState.MATURE);
 			}
 		}
 	}
-
-	void CheckWater()
+	
+	void SetSpoiled()
 	{
-		if ( !IsMature()  &&  !NeedsWater() )
+		if (m_PlantState != EPlantState.SPOILED)
 		{
-			if ( m_DeleteDryPlantTimer )
-			{
-				m_DeleteDryPlantTimer.Stop();
-			}
-			
-			SetPlantState(STATE_GROWING);
-			
-			if (GetGame().IsServer())
-			{
-				m_GrowthTimer = new Timer( CALL_CATEGORY_SYSTEM );
-				m_GrowthTimer.Run( m_StateChangeTime, this, "GrowthTimerTick", NULL, true );
-			}
+			m_PlantStateIndex++;
+			UpdatePlant();
+			SetPlantState(EPlantState.SPOILED);
+		}
+	}
+	
+	void SetDry()
+	{
+		if (m_PlantState != EPlantState.DRY)
+		{
+			m_PlantStateIndex++;
+			UpdatePlant();
+			SetPlantState(EPlantState.DRY);
 		}
 	}
 	
@@ -645,13 +528,8 @@ class PlantBase extends ItemBase
 		//Rework this to have something smooth
 		m_SprayQuantity += consumed_quantity;
 		
-		if ( !NeedsSpraying() )
-		{
-			if ( m_InfestationTimer != NULL )
-			{
-				m_InfestationTimer.Stop();
-			}
-			
+		if (m_SprayQuantity >= m_SprayUsage)
+		{			
 			m_IsInfested = false;
 			m_InfestationChance = 0;
 			
@@ -660,50 +538,6 @@ class PlantBase extends ItemBase
 		}
 	}
 
-	//DEPRECATED
-	string StopInfestation( float consumed_quantity )
-	{
-		m_SprayQuantity += consumed_quantity;
-		
-		if ( !NeedsSpraying() )
-		{
-			if ( m_InfestationTimer != NULL )
-			{
-				m_InfestationTimer.Stop();
-			}
-			
-			m_IsInfested = false;
-			m_InfestationChance = 0;
-			
-			ChangeInfestation( false );
-			UpdatePlant();
-			
-			return "I've sprayed the plant a bit. Now it is enough spayed.";
-		}
-		else
-		{
-			return "I've sprayed the plant a bit.";
-		}
-	}
-
-	//DEPRECATED
-	void RemovePlant()
-	{
-		if ( GetGame() && GetGame().IsServer() )
-		{
-			UnlockFromParent();
-			
-			if ( m_CurrentPlantMaterialQuantity > 0.0 )
-			{
-				vector pos = GetPosition();
-				ItemBase item = ItemBase.Cast( GetGame().CreateObjectEx( "PlantMaterial", pos, ECE_PLACE_ON_SURFACE ) );
-				item.SetQuantity( m_CurrentPlantMaterialQuantity * 1000.0 );
-			}
-			
-			RemoveSlot();
-		}
-	}
-	
 	void RemovePlantEx( vector pos )
 	{
 		if ( GetGame() && GetGame().IsServer() )
@@ -731,14 +565,8 @@ class PlantBase extends ItemBase
 	}
 
 	void Harvest( PlayerBase player )
-	{
-		//TODO Boris: Add soft skill 2.0
-		//PluginExperience module_exp = GetPlugin(PluginExperience);
-		//float harvesting_efficiency = module_exp.GetExpParamNumber(player, PluginExperience.EXP_FARMER_HARVESTING, "efficiency");
-		
-		//m_CropsCount = m_CropsCount * harvesting_efficiency;
-		
-		if ( !IsSpoiled() )
+	{		
+		if (IsHarvestable())
 		{
 			for ( int i = 0; i < m_CropsCount; i++ )
 			{
@@ -749,17 +577,21 @@ class PlantBase extends ItemBase
 		}
 		
 		m_HasCrops = false;
+
 		SetSynchDirty();
+
 		UpdatePlant();
+		m_GardenBase.SyncSlots();
 	}
 	
 	void SetPlantState(int state)
 	{
 		m_PlantState = state;
+		m_TimeTracker = 0;
 		SetSynchDirty();
 	}
 	
-	int GetPlantState()
+	EPlantState GetPlantState()
 	{
 		return m_PlantState;
 	}
@@ -789,26 +621,10 @@ class PlantBase extends ItemBase
 	{
 		Slot slotPlant = m_Slot;
 		
-		if ( IsDry() && slotPlant && slotPlant.GetWater() < slotPlant.GetWaterUsage() )
-		{
+		if ( m_PlantState == EPlantState.PAUSED && slotPlant && slotPlant.GetWater() < slotPlant.GetWaterUsage() )
 			return true;
-		}
-		else
-		{
-			return false;
-		}
-	}
-
-	bool NeedsSpraying()
-	{
-		if ( m_SprayQuantity < m_SprayUsage )
-		{
-			return true;
-		}
-		else
-		{
-			return false;
-		}
+		
+		return false;
 	}
 
 	float GetSprayQuantity()
@@ -825,16 +641,8 @@ class PlantBase extends ItemBase
 	{
 		GardenBase garden = GardenBase.Cast( GetHierarchyParent() );
 		
-		if ( garden )
-		{
-			if (m_SpoiledRemoveTimer)
-			{
-				m_SpoiledRemoveTimer.Stop();
-				m_SpoiledRemoveTimer = NULL;
-			}
-			
+		if ( garden )		
 			garden.RemoveSlotPlant( this );
-		}
 	}
 	
 	void SetSlot(Slot slot)
@@ -850,60 +658,32 @@ class PlantBase extends ItemBase
 		return m_Slot;
 	}
 	
+	void SetGarden(GardenBase gardenBase)
+	{
+		m_GardenBase = gardenBase;
+	}
+	
 	GardenBase GetGarden()
 	{
 		return m_GardenBase;
 	}
 
-	bool IsDry()
+	bool IsSprayable()
 	{
-		if ( GetPlantState() == STATE_DRY )
-		{
+		if (m_PlantState == EPlantState.GROWING && m_SprayQuantity < m_SprayUsage)
 			return true;
-		}
-		else
-		{
-			return false;
-		}
-	}
-
-	bool IsGrowing()
-	{
-		if ( GetPlantState() == STATE_GROWING )
-		{
-			return true;
-		}
-		else
-		{
-			return false;
-		}
-	}
-
-
-	bool IsMature()
-	{
-		if ( GetPlantState() == STATE_MATURE )
-		{
-			return true;
-		}
-		else
-		{
-			return false;
-		}
-	}
-
-	bool IsSpoiled()
-	{
-		if ( GetPlantState() == STATE_SPOILED )
-		{
-			return true;
-		}
-		else
-		{
-			return false;
-		}
+		
+		return false;
 	}
 	
+	bool IsHarvestable()
+	{
+		if (m_PlantState == EPlantState.MATURE && m_HasCrops)
+			return true;
+		
+		return false;
+	}
+		
 	bool HasCrops()
 	{
 		return m_HasCrops;
@@ -915,5 +695,63 @@ class PlantBase extends ItemBase
 		
 		AddAction(ActionHarvestCrops);
 		AddAction(ActionRemovePlant);
+	}
+		
+	void DebugSetTimes(int maturity, int spoil, int spoilRemove, int dryDelete)
+	{
+		if (maturity != 0)
+		{
+			m_FullMaturityTime = maturity;
+			m_StateChangeTime = m_FullMaturityTime / (m_GrowthStagesCount - 2);
+		}
+		
+		if (spoil != 0)
+			m_SpoilAfterFullMaturityTime = spoil;
+		
+		if (spoilRemove != 0)
+			m_SpoiledRemoveTime = spoilRemove;
+		
+		if (dryDelete != 0)
+			m_DeleteDryPlantTime = dryDelete;
+	}
+	
+	static void DebugSetGlobalTimes(int maturity, int spoil, int spoilRemove, int dryDelete)
+	{
+		m_DebugFullMaturityTime = maturity;
+		m_DebugSpoilTime = spoil;
+		m_DebugSpoilRemoveTime = spoilRemove;
+		m_DebugDeleteDryTime = dryDelete;
+	}
+	
+	static void DebugSetTickSpeedMultiplier(float multiplier)
+	{
+		m_DebugTickSpeedMultiplier = multiplier;
+	}
+	
+	// DEPRECATED
+	static const int STATE_DRY 		= 0;
+	static const int STATE_GROWING 	= 1;
+	static const int STATE_MATURE 	= 2;
+	static const int STATE_SPOILED 	= 3;
+	
+	ref Timer m_SpoiledRemoveTimer;
+	ref Timer m_DeleteDryPlantTimer;
+	ref Timer m_SpoilAfterFullMaturityTimer;
+	ref Timer m_GrowthTimer;
+	ref Timer m_InfestationTimer;
+	
+	void DeleteDryPlantTick();
+	void SpoiledRemoveTimerTick();
+	void InfestationTimerTick();
+	void CheckWater();
+	bool IsMature();
+	bool IsSpoiled();
+	bool IsDry();
+	bool IsGrowing();
+	bool NeedsSpraying();
+	void RemovePlant();
+	string StopInfestation( float consumed_quantity )
+	{
+		return "";
 	}
 }

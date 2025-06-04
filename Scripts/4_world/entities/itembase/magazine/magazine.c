@@ -6,7 +6,8 @@ enum CartridgeType
 	Pistol = 1,
 	Intermediate = 2,
 	FullPower = 3,
-	Shell = 4
+	Shell = 4,
+	Arrow = 5
 }
 
 enum ProjectileType
@@ -391,13 +392,14 @@ class Magazine : InventoryItemSuper
 	
 	override void GetDebugActions(out TSelectableActionInfoArrayEx outputList)
 	{
-		super.GetDebugActions(outputList);
-
 		if (GetAmmoCount() > 0)
 		{
 			outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "", FadeColors.LIGHT_GREY));
 			outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.PRINT_BULLETS, "Print Bullets", FadeColors.LIGHT_GREY));
+			outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 		}
+
+		super.GetDebugActions(outputList);
 	}
 	
 	override bool OnAction(int action_id, Man player, ParamsReadContext ctx)

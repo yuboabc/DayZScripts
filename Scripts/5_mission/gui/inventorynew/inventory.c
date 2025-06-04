@@ -32,8 +32,6 @@ class Inventory: LayoutHolder
 	protected ref InventoryQuickbar			m_Quickbar;
 	
 	protected Widget						m_QuickbarWidget;
-	protected Widget						m_SpecializationPanel;
-	protected Widget						m_SpecializationIcon;
 	protected Widget						m_TopConsoleToolbarVicinity;
 	protected Widget						m_TopConsoleToolbarHands;
 	protected Widget						m_TopConsoleToolbarEquipment;
@@ -91,18 +89,29 @@ class Inventory: LayoutHolder
 		m_Quickbar 			= new InventoryQuickbar(m_QuickbarWidget);
 		m_Quickbar.UpdateItems(m_QuickbarWidget);
 		
-		m_SpecializationPanel = GetMainWidget().FindAnyWidget("SpecializationPanelPanel");
-		m_SpecializationIcon = GetMainWidget().FindAnyWidget("SpecializationIcon");
-		
 		WidgetEventHandler.GetInstance().RegisterOnDropReceived(GetMainWidget().FindAnyWidget("LeftBackground"), this, "OnLeftPanelDropReceived");
 		WidgetEventHandler.GetInstance().RegisterOnDraggingOver(GetMainWidget().FindAnyWidget("LeftBackground"), this, "DraggingOverLeftPanel");
 		WidgetEventHandler.GetInstance().RegisterOnDropReceived(GetMainWidget().FindAnyWidget("LeftPanel").FindAnyWidget("Scroller"), this, "OnLeftPanelDropReceived");
 		WidgetEventHandler.GetInstance().RegisterOnDraggingOver(GetMainWidget().FindAnyWidget("LeftPanel").FindAnyWidget("Scroller"), this, "DraggingOverLeftPanel");
 		
+		#ifndef PLATFORM_CONSOLE
+		WidgetEventHandler.GetInstance().RegisterOnDropReceived(GetMainWidget().FindAnyWidget("LeftPanel").FindAnyWidget("SlotsContent"), this, "OnLeftPanelDropReceived");
+		WidgetEventHandler.GetInstance().RegisterOnDraggingOver(GetMainWidget().FindAnyWidget("LeftPanel").FindAnyWidget("SlotsContent"), this, "DraggingOverLeftPanel");
+		WidgetEventHandler.GetInstance().RegisterOnDropReceived(GetMainWidget().FindAnyWidget("LeftPanel").FindAnyWidget("SlotsHeader"), this, "OnLeftPanelDropReceived");
+		WidgetEventHandler.GetInstance().RegisterOnDraggingOver(GetMainWidget().FindAnyWidget("LeftPanel").FindAnyWidget("SlotsHeader"), this, "DraggingOverLeftPanel");
+		#endif
+		
 		WidgetEventHandler.GetInstance().RegisterOnDropReceived(GetMainWidget().FindAnyWidget("RightBackground"), this, "OnRightPanelDropReceived");
 		WidgetEventHandler.GetInstance().RegisterOnDraggingOver(GetMainWidget().FindAnyWidget("RightBackground"), this, "DraggingOverRightPanel");
 		WidgetEventHandler.GetInstance().RegisterOnDropReceived(GetMainWidget().FindAnyWidget("RightPanel").FindAnyWidget("Scroller"), this, "OnRightPanelDropReceived");
 		WidgetEventHandler.GetInstance().RegisterOnDraggingOver(GetMainWidget().FindAnyWidget("RightPanel").FindAnyWidget("Scroller"), this, "DraggingOverRightPanel");
+		
+		#ifndef PLATFORM_CONSOLE
+		WidgetEventHandler.GetInstance().RegisterOnDropReceived(GetMainWidget().FindAnyWidget("RightPanel").FindAnyWidget("SlotsContent"), this, "OnRightPanelDropReceived");
+		WidgetEventHandler.GetInstance().RegisterOnDraggingOver(GetMainWidget().FindAnyWidget("RightPanel").FindAnyWidget("SlotsContent"), this, "DraggingOverRightPanel");
+		WidgetEventHandler.GetInstance().RegisterOnDropReceived(GetMainWidget().FindAnyWidget("RightPanel").FindAnyWidget("SlotsHeader"), this, "OnRightPanelDropReceived");
+		WidgetEventHandler.GetInstance().RegisterOnDraggingOver(GetMainWidget().FindAnyWidget("RightPanel").FindAnyWidget("SlotsHeader"), this, "DraggingOverRightPanel");
+		#endif
 		
 		WidgetEventHandler.GetInstance().RegisterOnDropReceived(GetMainWidget().FindAnyWidget("CharacterPanel"), this, "OnCenterPanelDropReceived");
 		WidgetEventHandler.GetInstance().RegisterOnDraggingOver(GetMainWidget().FindAnyWidget("CharacterPanel"), this, "DraggingOverCenterPanel");
@@ -136,7 +145,6 @@ class Inventory: LayoutHolder
 		GetGame().GetMission().GetOnInputPresetChanged().Insert(OnInputPresetChanged);
 		GetGame().GetMission().GetOnInputDeviceChanged().Insert(OnInputDeviceChanged);
 		
-		m_SpecializationPanel.Show(false);
 		UpdateConsoleToolbar();
 		InitInputWrapperData();
 		#endif
@@ -194,6 +202,7 @@ class Inventory: LayoutHolder
 	{
 		ItemManager.GetInstance().SerializeDefaultOpenStates();
 		ItemManager.GetInstance().SerializeDefaultHeaderOpenStates();
+		GetGame().SaveProfile();
 	}
 
 	void Deserialize()
@@ -673,6 +682,7 @@ class Inventory: LayoutHolder
 	{
 		PlayerBase player = PlayerBase.Cast(GetGame().GetPlayer());
 		InventoryItem item;
+		InventoryItem handsItem
 		if (GetUApi().GetInputByID(UAUIRotateInventory).LocalPress())
 		{
 			item = InventoryItem.Cast(ItemManager.GetInstance().GetDraggedItem());
@@ -816,9 +826,13 @@ class Inventory: LayoutHolder
 					{
 						if (m_HandsArea.TransferItemToVicinity())
 						{
-							m_HandsArea.SetActive(false);
-							m_HandsArea.UnfocusGrid();
-							m_LeftArea.SetActive(true);
+							handsItem = InventoryItem.Cast(player.GetHumanInventory().GetEntityInHands());
+							if (handsItem && handsItem == item)
+							{
+								m_HandsArea.SetActive(false);
+								m_HandsArea.UnfocusGrid();
+								m_LeftArea.SetActive(true);
+							}
 							m_HadFastTransferred = true;
 						}
 					}
@@ -888,17 +902,19 @@ class Inventory: LayoutHolder
 					item = InventoryItem.Cast(m_HandsArea.GetFocusedItem());
 					if (item && item.GetInventory().CanRemoveEntity())
 					{
-						if (m_HandsArea.TransferItem())
+						handsItem = InventoryItem.Cast(player.GetHumanInventory().GetEntityInHands());
+						if (m_HandsArea.TransferItem() && handsItem && handsItem == item)
 						{
 							m_HandsArea.SetActive(false);
 							m_HandsArea.UnfocusGrid();
 							m_RightArea.SetActive(true);
 						}
+						
+						HideOwnedTooltip();
 					}
 				}
 				
 				UpdateConsoleToolbar();
-				HideOwnedTooltip();
 			}
 		}
 		
@@ -1151,12 +1167,6 @@ class Inventory: LayoutHolder
 			}
 		}
 		
-		m_SpecializationPanel.Show(false);
-		
-		#ifdef PLATFORM_CONSOLE
-			ResetFocusedContainers();
-		#endif	
-		
 		RefreshQuickbar();
 		UpdateInterval();
 		UpdateConsoleToolbar();
@@ -1182,26 +1192,7 @@ class Inventory: LayoutHolder
 			}
 		}
 		ItemManager.GetInstance().SetSelectedItemEx(null, null, null);
-	}
-	
-	void UpdateSpecialtyMeter()
-	{
-		PlayerBase player = PlayerBase.Cast(GetGame().GetPlayer());
-		if (player && player.GetSoftSkillsManager())
-		{
-			float x = player.GetSoftSkillsManager().GetSpecialtyLevel() / 2;
-			float y = -0.75;
-			#ifndef PLATFORM_CONSOLE
-			m_SpecializationIcon.SetPos(x, y, true);
-			#else
-			Mission mission = GetGame().GetMission();
-			IngameHud hud = IngameHud.Cast(mission.GetHud());
-			if (hud)
-			{
-				hud.UpdateSpecialtyMeter(x,y);
-			}
-			#endif
-		}
+		ResetFocusedContainers();
 	}
 	
 	override void Refresh()
@@ -1648,4 +1639,10 @@ class Inventory: LayoutHolder
 			m_InvInputTimes[i] = tickvalue;
 		}
 	}
+	
+	// DEPRECATED below
+	protected Widget m_SpecializationPanel;
+	protected Widget m_SpecializationIcon;
+	
+	void UpdateSpecialtyMeter();
 }

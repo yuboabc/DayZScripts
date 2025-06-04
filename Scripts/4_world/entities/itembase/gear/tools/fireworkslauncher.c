@@ -40,7 +40,7 @@ class FireworksLauncherClientEvent : FireworksLauncherClientEventBase
 	protected ParticleSource 		m_ParticleAfterBurnEnd;
 	protected string				m_Color;
 	protected int 					m_RemainingExplosions = GetSecondaryExplosionCount();
-	protected ref array<ref FireworksLauncherClientEventBase> m_Events = new ref array<ref FireworksLauncherClientEventBase>;
+	protected ref array<ref FireworksLauncherClientEventBase> m_Events = new array<ref FireworksLauncherClientEventBase>;
 	#ifdef DEVELOPER
 	Shape 							m_ShotTrajectory;
 	#endif
@@ -348,11 +348,6 @@ class FireworksLauncher: FireworksBase
 		SEffectManager.DestroyEffect(m_FuseSoundStart);
 	}
 	
-	override protected bool UsesGlobalDeploy()
-	{
-		return true;
-	}
-	
 	override bool IsDeployable()
 	{
 		return true;
@@ -497,12 +492,12 @@ class FireworksLauncher: FireworksBase
 	
 	override protected bool CanPutInCargo( EntityAI parent )
 	{
-		return (GetState() == EFireworksState.DEFAULT || (GetState() == EFireworksState.PLACED) || (GetState() == EFireworksState.FINISHED);
+		return (GetState() == EFireworksState.DEFAULT) || (GetState() == EFireworksState.PLACED) || (GetState() == EFireworksState.FINISHED);
 	}
 	
 	override protected bool CanPutIntoHands( EntityAI parent )
 	{
-		return (GetState() == EFireworksState.DEFAULT || (GetState() == EFireworksState.PLACED) || (GetState() == EFireworksState.FINISHED);
+		return (GetState() == EFireworksState.DEFAULT) || (GetState() == EFireworksState.PLACED) || (GetState() == EFireworksState.FINISHED);
 	}
 	
 	protected void OnFuseIgnitedServer()

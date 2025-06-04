@@ -50,8 +50,8 @@ class Building extends EntityAI
 	//! Locks the door if not already locked, resets the door health. 'force = true' will close the door if open
 	proto native void LockDoor(int index, bool force = false);
 
-	//! Unlocks the door if locked
-	proto native void UnlockDoor(int index);
+	//! Unlocks the door if locked, AJAR animation optional
+	proto native void UnlockDoor(int index, bool animate = true);
 
 	//! Position in world space for where the door sounds are played from
 	proto native vector GetDoorSoundPos(int index);
@@ -151,17 +151,30 @@ class Building extends EntityAI
 		return (!IsDoorOpen(doorIndex) && !IsDoorLocked(doorIndex));
 	}
 	
+	/**
+	\brief Which door is compatible with which key (door idx supplied). Bitwise.
+	@param doorIdx
+	@return bitwise value of all compatible locks
+	\note you can combine the bit values like so:
+	\note return (1 << EBuildingLockType.LOCKPICK) | (1 << EBuildingLockType.SHIP_CONTAINER_1);
+	\note you can also this for each individual door idx
+	*/	
+	int GetLockCompatibilityType(int doorIdx)
+	{
+		return 1 << EBuildingLockType.LOCKPICK; //all doors are lockpickable by default
+	}
+	
 	override void GetDebugActions(out TSelectableActionInfoArrayEx outputList)
 	{
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.BUILDING_OUTPUT_LOG, "Output Door Log", FadeColors.LIGHT_GREY));
-		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, " --- ", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.BUILDING_PLAY_DOOR_SOUND, "Play Door Sound", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.BUILDING_OPEN_DOOR, "Open Door", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.BUILDING_CLOSE_DOOR, "Close Door", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.BUILDING_LOCK_DOOR, "Lock Door", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.BUILDING_UNLOCK_DOOR, "Unlock Door", FadeColors.LIGHT_GREY));
-		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, " --- ", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 		
 		super.GetDebugActions(outputList);
 	}
@@ -219,7 +232,7 @@ class Building extends EntityAI
 	}
 
 	ref TIntArray m_InteractActions;
-	
+
 	void Building()
 	{
 		m_InteractActions = new TIntArray;

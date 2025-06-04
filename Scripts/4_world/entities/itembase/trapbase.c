@@ -69,12 +69,10 @@ class TrapBase extends ItemBase
 		m_InfoDamage =				"#STR_TrapBase3";
 		m_InfoActivationTime = 		"#STR_TrapBase4" + m_InitWaitTime.ToString() + "#STR_TrapBase5";
 		
-		m_UpdateTimer				= new ref Timer();	//! timer calling OnUpdate in configured interval
+		m_UpdateTimer				= new Timer();	//! timer calling OnUpdate in configured interval
 		
 		RegisterNetSyncVariableBool("m_IsActive");
 		RegisterNetSyncVariableBool("m_IsInProgress");
-		RegisterNetSyncVariableBool("m_IsSoundSynchRemote");
-		RegisterNetSyncVariableBool("m_IsDeploySound");		
 	}
 	
 	void OnUpdate(EntityAI victim);
@@ -89,9 +87,6 @@ class TrapBase extends ItemBase
     {
         super.OnVariablesSynchronized();
 		
-		if (IsDeploySound())
-			PlayDeploySound();
-				
 		if (GetGame().IsMultiplayer())
 		{
 			if (m_IsActive && !m_IsInProgress)
@@ -616,7 +611,7 @@ class TrapBase extends ItemBase
 	//================================================================
 	// ADVANCED PLACEMENT
 	//================================================================
-		
+	
 	override void SetActions()
 	{
 		super.SetActions();

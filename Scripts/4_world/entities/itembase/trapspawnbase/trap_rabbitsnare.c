@@ -30,17 +30,7 @@ class Trap_RabbitSnare extends TrapSpawnBase
 
 		return g_Game.IsSurfaceDigable(surfaceType);
 	}
-	
-	override void OnVariablesSynchronized()
-	{
-		super.OnVariablesSynchronized();
-				
-		if (IsPlaceSound())
-		{
-			PlayPlaceSound();
-		}
-	}
-	
+		
 	override void SetupTrap()
 	{
 		if ( GetGame().IsServer() )
@@ -76,6 +66,8 @@ class Trap_RabbitSnare extends TrapSpawnBase
 			Param2<EntityAI,int> par = new Param2<EntityAI,int>(this,updateCount);
 			m_CatchingContext = new CatchingContextTrapLandSnare(par);
 		}
+		
+		super.InitCatchingComponent();
 	}
 	
 	//================================================================
@@ -86,7 +78,6 @@ class Trap_RabbitSnare extends TrapSpawnBase
 	{
 		super.OnPlacementComplete( player, position, orientation );
 		SetOrientation(orientation);	
-		SetIsPlaceSound( true );
 	}
 	
 	override bool IsDeployable()
@@ -108,7 +99,7 @@ class Trap_RabbitSnare extends TrapSpawnBase
 	{
 		super.SetActions();
 		
-		// We remove the hunting trap deploy action in order to all advanced placement
+		// We remove the hunting trap deploy action in order to allow advanced placement
 		RemoveAction(ActionDeployHuntingTrap);
 		
 		AddAction(ActionTogglePlaceObject);

@@ -1,6 +1,6 @@
 class UniversalTemperatureSourceLambdaBaseImpl : UniversalTemperatureSourceLambdaBase
 {
-	override void DryItemsInVicinity(UniversalTemperatureSourceSettings pSettings, vector position, out notnull array<Object> nearestObjects)
+	override void DryItemsInVicinity(UniversalTemperatureSourceSettings pSettings, vector position, out notnull array<EntityAI> nearestObjects)
 	{
 		float distanceToTemperatureSource;
 		
@@ -12,7 +12,7 @@ class UniversalTemperatureSourceLambdaBaseImpl : UniversalTemperatureSourceLambd
 			if (nearestItem && nearestItem.HasWetness() && nearestItem != pSettings.m_Parent && !nearestItem.IsInherited(Man) && !nearestItem.IsUniversalTemperatureSource())
 			{
 				distanceToTemperatureSource = vector.Distance(nearestItem.GetPosition(), position);
-				distanceToTemperatureSource = Math.Max(distanceToTemperatureSource, 0.1);	//min distance cannot be 0 (division by zero)
+				distanceToTemperatureSource = Math.Max(distanceToTemperatureSource, 0.3);	//min distance cannot be 0 (division by zero)
 				
 				float dryModifier = 0;				
 				
@@ -43,11 +43,10 @@ class UniversalTemperatureSourceLambdaBaseImpl : UniversalTemperatureSourceLambd
 		}
 	}
 	
-	override void WarmAndCoolItemsInVicinity(UniversalTemperatureSourceSettings pSettings, vector position, out notnull array<Object> nearestObjects)
+	override void WarmAndCoolItemsInVicinity(UniversalTemperatureSourceSettings pSettings, vector position, out notnull array<EntityAI> nearestObjects)
 	{
 		float distanceToTemperatureSource;
 		float tempTarget = pSettings.m_TemperatureItemCap;
-		float distanceBasedTemperature;
 		EntityAI nearestEntity;
 		
 		foreach (Object nearestObject : nearestObjects)
@@ -80,16 +79,16 @@ class UniversalTemperatureSourceLambdaBaseImpl : UniversalTemperatureSourceLambd
 				{
 					dta.m_HeatPermeabilityCoef = nearestEntity.GetHeatPermeabilityCoef();
 					
-					if (Math.AbsFloat(temperatureDifference) < GameConstants.TEMPERATURE_SENSITIVITY_THRESHOLD) //ignoring insignificant increments
-						nearestEntity.RefreshTemperatureAccess(dta);
-					else
+					if (Math.AbsFloat(temperatureDifference) >= GameConstants.TEMPERATURE_SENSITIVITY_THRESHOLD || !nearestEntity.IsFreezeThawProgressFinished()) //ignoring insignificant increments
 						nearestEntity.SetTemperatureEx(dta);
+					else
+						nearestEntity.RefreshTemperatureAccess(dta);
 				}
 			}
 		}
 	}
 	
-	protected void UpdateVicinityTemperatureRecursive(EntityAI ent, TemperatureData dta, float heatPermeabilityCoef = 1.0) //TODO
+	protected void UpdateVicinityTemperatureRecursive(EntityAI ent, TemperatureData dta, float heatPermeabilityCoef = 1.0)
 	{
 		float heatPermCoef = heatPermeabilityCoef;
 		heatPermCoef *= ent.GetHeatPermeabilityCoef();
@@ -99,10 +98,10 @@ class UniversalTemperatureSourceLambdaBaseImpl : UniversalTemperatureSourceLambd
 		if (ent.CanHaveTemperature() && !ent.IsSelfAdjustingTemperature())
 		{
 			float temperatureDifference = dta.m_AdjustedTarget - ent.GetTemperature();
-			if (Math.AbsFloat(temperatureDifference) < GameConstants.TEMPERATURE_SENSITIVITY_THRESHOLD) //ignoring insignificant increments
-				ent.RefreshTemperatureAccess(dta);
-			else
+			if (Math.AbsFloat(temperatureDifference) >= GameConstants.TEMPERATURE_SENSITIVITY_THRESHOLD || !ent.IsFreezeThawProgressFinished()) //ignoring insignificant increments
 				ent.SetTemperatureEx(dta);
+			else
+				ent.RefreshTemperatureAccess(dta);
 		}
 		
 		// go through any attachments and cargo, recursive
@@ -138,15 +137,35 @@ class UniversalTemperatureSourceLambdaBaseImpl : UniversalTemperatureSourceLambd
 	
 	override void Execute(UniversalTemperatureSourceSettings pSettings, UniversalTemperatureSourceResult resultValues)
 	{
-		resultValues.m_Temperature = pSettings.m_TemperatureMax;
-		
-		array<Object> nearestObjects = new array<Object>();
-		
+		resultValues.m_TemperatureItem = pSettings.m_TemperatureItemCap;
+		resultValues.m_TemperatureHeatcomfort = pSettings.m_TemperatureCap;
+				
 		vector pos = pSettings.m_Position;
 		if (pSettings.m_Parent != null)
 			pos = pSettings.m_Parent.GetPosition();
 		
-		GetGame().GetObjectsAtPosition(pos, pSettings.m_RangeMax, nearestObjects, null);
+		// Define half-size (range)
+		float halfRange = pSettings.m_RangeMax;
+		
+		// Calculate min and max positions of the box
+		vector minPos = pos - Vector(halfRange, halfRange / 2, halfRange);
+		vector maxPos = pos + Vector(halfRange, halfRange / 2, halfRange);
+		
+		array<EntityAI> nearestObjects = {};
+		DayZPlayerUtils.SceneGetEntitiesInBox(minPos, maxPos, nearestObjects, QueryFlags.DYNAMIC);
+		
+		for (int i = nearestObjects.Count() - 1; i >= 0; --i)
+		{
+			EntityAI entity = nearestObjects[i];
+			if (entity)
+			{
+				vector objPos = entity.GetPosition();
+				float distance = vector.Distance(objPos, pos);
+				if (distance > pSettings.m_RangeMax)
+					nearestObjects.Remove(i);
+			}
+		}
+		
 		if (nearestObjects.Count() > 0)
 		{
 			DryItemsInVicinity(pSettings, pos, nearestObjects);
@@ -157,14 +176,32 @@ class UniversalTemperatureSourceLambdaBaseImpl : UniversalTemperatureSourceLambd
 	//! DEPRECATED
 	override void DryItemsInVicinity(UniversalTemperatureSourceSettings pSettings)
 	{
-		array<Object> nearestObjects = new array<Object>();
-		
 		vector pos = pSettings.m_Position;
 		if (pSettings.m_Parent != null)
 			pos = pSettings.m_Parent.GetPosition();
 		
-		GetGame().GetObjectsAtPosition(pos, pSettings.m_RangeMax, nearestObjects, null);
-
+		// Define half-size (range)
+		float halfRange = pSettings.m_RangeMax;
+		
+		// Calculate min and max positions of the box
+		vector minPos = pos - Vector(halfRange, halfRange / 2, halfRange);
+		vector maxPos = pos + Vector(halfRange, halfRange / 2, halfRange);
+		
+		array<EntityAI> nearestObjects = {};
+		DayZPlayerUtils.SceneGetEntitiesInBox(minPos, maxPos, nearestObjects, QueryFlags.DYNAMIC);
+		
+		for (int i = nearestObjects.Count() - 1; i >= 0; --i)
+		{
+			EntityAI entity = nearestObjects[i];
+			if (entity)
+			{
+				vector objPos = entity.GetPosition();
+				float distance = vector.Distance(objPos, pos);
+				if (distance > pSettings.m_RangeMax)
+					nearestObjects.Remove(i);
+			}
+		}
+		
 		DryItemsInVicinity(pSettings, pos, nearestObjects);
 	}
 }

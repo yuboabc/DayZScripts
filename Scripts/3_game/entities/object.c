@@ -852,36 +852,19 @@ class Object extends IEntity
 	*/
 	void OnRPC(PlayerIdentity sender, int rpc_type, ParamsReadContext ctx);
 
-	vector GetSelectionPositionOld(string name)
-	{
-		return GetGame().ObjectGetSelectionPosition(this, name);
-	}
-	
-	vector GetSelectionPositionLS(string name)
-	{
-		return GetGame().ObjectGetSelectionPositionLS(this, name);
-	}
-	
-	vector GetSelectionPositionMS(string name)
-	{
-		return GetGame().ObjectGetSelectionPositionMS(this, name);
-	}
-	
-	vector GetSelectionPositionWS(string name)
-	{
-		return GetGame().ObjectGetSelectionPositionWS(this, name);
-	}
+	proto vector GetSelectionPositionOld(string name);	
+	proto vector GetSelectionPositionLS(string name);
+	proto vector GetSelectionPositionMS(string name);
+	proto vector GetSelectionPositionWS(string name);
+		
+	/**
+  \brief Get the position of the selection with no animations applied
+		@param name selection name of the selection (component, proxy)
+	*/
+	proto vector GetSelectionBasePositionLS(string name);
 
-	
-	vector ModelToWorld(vector modelPos)
-	{
-		return GetGame().ObjectModelToWorld(this, modelPos);
-	}
-	
-	vector WorldToModel(vector worldPos)
-	{
-		return GetGame().ObjectWorldToModel(this, worldPos);
-	}
+	proto vector ModelToWorld(vector modelPos);
+	proto vector WorldToModel(vector worldPos);
 
 	// config class API	
 	
@@ -1055,15 +1038,15 @@ class Object extends IEntity
 	@param zoneName if empty string, sets state of global health
 	@param healthType if empty string, sets state of main health
 	*/
-	void   DecreaseHealth(string zoneName, string healthType, float value, bool auto_delete)
+	void DecreaseHealth(string zoneName, string healthType, float value, bool auto_delete)
 	{
-		DecreaseHealth( zoneName, healthType, value);
+		DecreaseHealth(zoneName, healthType, value);
 		
-		float result_health = GetHealth(zoneName, healthType);
-		
-		if ( auto_delete  &&  result_health <= 0 )
+		if (auto_delete)
 		{
-			GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).Call(GetGame().ObjectDelete, this); 
+			float result_health = GetHealth(zoneName, healthType);
+			if (result_health <= 0)
+				GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).Call(GetGame().ObjectDelete, this); 
 		}
 	}
 	
@@ -1424,6 +1407,29 @@ class Object extends IEntity
 	bool HasFixedActionTargetCursorPosition()
 	{
 		return false;
+	}
+	
+	void OnSpawnByObjectSpawner(ITEM_SpawnerObject item)
+	{}
+
+	bool Gizmo_IsSupported()
+	{
+		return !GetGame().IsMultiplayer();
+	}
+
+	void Gizmo_SetWorldTransform(vector transform[4], bool finalize)
+	{			
+		SetPosition(transform[3]);
+		SetDirection(transform[2]);
+
+		SetTransform(transform);
+			
+		// TODO: RPC or something when finalize == true to send the new transform to the server, don't forget to make 'Gizmo_IsSupported' return true
+	}
+
+	void Gizmo_GetWorldTransform(vector transform[4])
+	{
+		GetTransform(transform);
 	}
 
 	//Debug

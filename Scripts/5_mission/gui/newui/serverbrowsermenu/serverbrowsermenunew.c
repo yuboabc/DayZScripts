@@ -96,8 +96,11 @@ class ServerBrowserMenuNew extends UIScriptedMenu
 		
 		GetGame().GetMission().GetOnInputPresetChanged().Insert(OnInputPresetChanged);
 		GetGame().GetMission().GetOnInputDeviceChanged().Insert(OnInputDeviceChanged);
-		OnInputDeviceChanged(GetGame().GetInput().GetCurrentInputDevice());
 
+		#ifdef PLATFORM_WINDOWS
+		GetGame().GetInput().EnableGamepad(false);
+		#endif
+		
 		return layoutRoot;
 	}
 	
@@ -105,6 +108,10 @@ class ServerBrowserMenuNew extends UIScriptedMenu
 	{
 		#ifdef PLATFORM_CONSOLE
 		SaveFavoriteServersConsoles();
+		#endif
+
+		#ifdef PLATFORM_WINDOWS
+		GetGame().GetInput().EnableGamepad(true);
 		#endif
 
 		OnlineServices.m_ServersAsyncInvoker.Remove(OnLoadServersAsync);
@@ -136,6 +143,10 @@ class ServerBrowserMenuNew extends UIScriptedMenu
 			layoutRoot.FindAnyWidget("ConsoleControls").Show(true);
 			layoutRoot.FindAnyWidget("PlayIcon0").Show(false);
 			layoutRoot.FindAnyWidget("BackIcon0").Show(false);
+			if (GetGame().GetInput().IsEnabledMouseAndKeyboardEvenOnServer())
+			{
+				GetGame().GetUIManager().ShowUICursor(false);
+			}
 			#endif
 		break;
 
@@ -147,6 +158,7 @@ class ServerBrowserMenuNew extends UIScriptedMenu
 				layoutRoot.FindAnyWidget("ConsoleControls").Show(false);
 				layoutRoot.FindAnyWidget("PlayIcon0").Show(true);
 				layoutRoot.FindAnyWidget("BackIcon0").Show(true);
+				GetGame().GetUIManager().ShowUICursor(true);
 			}
 			#endif
 		break;
@@ -885,6 +897,12 @@ class ServerBrowserMenuNew extends UIScriptedMenu
 		toolbar_x.SetText(InputUtils.GetRichtextButtonIconFromInputAction("UAUICtrlX", "", EUAINPUT_DEVICE_CONTROLLER, InputUtils.ICON_SCALE_TOOLBAR));
 		toolbar_y.SetText(InputUtils.GetRichtextButtonIconFromInputAction("UAUICtrlY", "", EUAINPUT_DEVICE_CONTROLLER, InputUtils.ICON_SCALE_TOOLBAR));
 		toolbar_tr.SetText(InputUtils.GetRichtextButtonIconFromInputAction("UAUIThumbRight", "", EUAINPUT_DEVICE_CONTROLLER, InputUtils.ICON_SCALE_TOOLBAR));
+	}
+	
+	override void OnShow()
+	{
+		super.OnShow();
+		OnInputDeviceChanged(GetGame().GetInput().GetCurrentInputDevice());
 	}
 	
 	override void OnHide()

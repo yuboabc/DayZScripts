@@ -28,8 +28,10 @@ class UndergroundHandlerClient
 	protected float 		m_EyeAcco = 1;
 	protected float 		m_LightingLerpTarget;
 	protected float 		m_LightingLerp;
-	protected EffectSound m_AmbientSound;
+	protected string		m_AmbientController; // active sound controlelr for ambient
+	protected EffectSound 	m_AmbientSound;
 	
+	protected UndergroundTrigger m_BestTrigger;
 	protected UndergroundTrigger m_TransitionalTrigger;
 	
 	void UndergroundHandlerClient(PlayerBase player)
@@ -321,15 +323,16 @@ class UndergroundHandlerClient
 	
 	protected void ProcessSound(float timeSlice)
 	{
+		if (m_BestTrigger && m_BestTrigger.m_Data && m_BestTrigger.m_Data.AmbientSoundType != string.Empty)	// caves use sound controllers so EnvSounds2D shouldnt be touched
+			return;
+		
+		// reduces all env sounds and increases ambient based on eye acco
 		GetGame().GetWorld().SetExplicitVolumeFactor_EnvSounds2D(m_EyeAcco, 0);
+
 		if (m_AmbientSound)
 		{
-			m_AmbientSound.SetSoundVolume(1-m_EyeAcco);
-			//Print(m_AmbientSound.GetSoundVolume());
-		}
-		else
-		{
-			m_Player.PlaySoundSetLoop(m_AmbientSound, "Underground_SoundSet",3,3);
+			if (m_TransitionalTrigger && m_TransitionalTrigger.m_Data.Breadcrumbs.Count() >= 2)
+				m_AmbientSound.SetSoundVolume(1-m_EyeAcco);
 		}
 	}
 	
@@ -422,6 +425,8 @@ class UndergroundHandlerClient
 		//Print(bestType);
 		if (bestTrigger)
 		{
+			m_BestTrigger = bestTrigger;
+			
 			if (bestTrigger.m_Type == EUndergroundTriggerType.TRANSITIONING)
 			{
 				m_TransitionalTrigger = bestTrigger;
@@ -494,6 +499,27 @@ class UndergroundHandlerClient
 		m_LightingLerp = result;
 	}
 	
+	protected void PlayAmbientSound()
+	{
+		if (m_BestTrigger && m_BestTrigger.m_Data.AmbientSoundType != string.Empty)
+		{
+			m_AmbientController = m_BestTrigger.m_Data.AmbientSoundType;
+			SetSoundControllerOverride(m_AmbientController, 1.0, SoundControllerAction.Overwrite);
+		}
+		else 
+			m_Player.PlaySoundSetLoop(m_AmbientSound, "Underground_SoundSet",3,3);
+	}
+	
+	protected void StopAmbientSound()
+	{
+		if (m_AmbientController != string.Empty)
+		{
+			SetSoundControllerOverride(m_AmbientController, 0, SoundControllerAction.None);
+			m_AmbientController = string.Empty;
+		}
+		else if (m_AmbientSound)
+			m_Player.StopSoundSet(m_AmbientSound);
+	}
 	
 	protected void OnUndergroundPresenceUpdate(EUndergroundPresence newPresence, EUndergroundPresence oldPresence)
 	{
@@ -503,11 +529,13 @@ class UndergroundHandlerClient
 			if (oldPresence == EUndergroundPresence.NONE)
 			{
 				EnableLights(true);
+				if (m_BestTrigger && m_BestTrigger.m_Data && m_BestTrigger.m_Data.AmbientSoundType != string.Empty)
+					PlayAmbientSound();
 			}
 			if (newPresence > EUndergroundPresence.OUTER && oldPresence <= EUndergroundPresence.OUTER)
 			{
-				GetGame().GetWeather().SuppressLightningSimulation(true);
-				m_Player.PlaySoundSetLoop(m_AmbientSound, "Underground_SoundSet",3,3);
+				GetGame().GetWeather().SuppressLightningSimulation(true);		
+				PlayAmbientSound();
 			}
 			if (newPresence == EUndergroundPresence.FULL)
 			{
@@ -523,13 +551,16 @@ class UndergroundHandlerClient
 		if (newPresence <= EUndergroundPresence.OUTER && oldPresence > EUndergroundPresence.OUTER)
 		{
 			GetGame().GetWeather().SuppressLightningSimulation(false);
-			if (m_AmbientSound)
-				m_Player.StopSoundSet(m_AmbientSound);
 		}
-		if (newPresence == EUndergroundPresence.NONE && oldPresence >= EUndergroundPresence.OUTER)
+		if (newPresence == EUndergroundPresence.NONE)
 		{
-			GetGame().GetWorld().SetUserLightingLerp(0);
-			EnableLights(false);
+			StopAmbientSound();
+			
+			if (oldPresence >= EUndergroundPresence.OUTER)
+			{
+				GetGame().GetWorld().SetUserLightingLerp(0);
+				EnableLights(false);
+			}
 		}
 	}
 	

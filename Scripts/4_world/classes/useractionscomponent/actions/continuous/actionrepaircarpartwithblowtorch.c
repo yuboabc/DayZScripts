@@ -2,7 +2,7 @@ class ActionRepairCarPartWithBlowtorchCB : ActionRepairCarPartCB
 {
 	override void CreateActionComponent()
 	{
-		m_ActionData.m_ActionComponent = new CAContinuousTime(UATimeSpent.BASEBUILDING_REPAIR_MEDIUM);
+		m_ActionData.m_ActionComponent = new CAContinuousRepeat(UATimeSpent.BASEBUILDING_REPAIR_MEDIUM);
 	}
 }
 
@@ -32,13 +32,6 @@ class ActionRepairCarPartWithBlowtorch : ActionRepairCarPart
 		super.OnStartAnimationLoopServer(action_data);
 
 		action_data.m_MainItem.GetCompEM().SwitchOn();
-	}
-	
-	override void OnFinishProgressServer(ActionData action_data)
-	{
-		super.OnFinishProgressServer(action_data);
-		
-		action_data.m_MainItem.GetCompEM().SwitchOff();
 	}
 	
 	override void OnEndServer(ActionData action_data)

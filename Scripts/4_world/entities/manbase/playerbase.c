@@ -107,7 +107,7 @@ class PlayerBase extends ManBase
 	int								m_StaminaState;
 	float							m_UnconsciousTime;
 	int 							m_ShockSimplified;
-	float							m_CurrentShock; //Used to synchronize shock between server and client
+	float							m_CurrentShock; //Used to synchronize shock between server and client, utilized by ShockHandler
 	bool							m_IsRestrained;
 	bool							m_IsRestrainedLocal;
 	bool 							m_IsRestrainStarted;
@@ -301,6 +301,8 @@ class PlayerBase extends ManBase
 	//! invokers	
 	protected ref ScriptInvoker		m_OnUnconsciousStart;
 	protected ref ScriptInvoker		m_OnUnconsciousStop;
+	
+	private ref map<eAgents, float> m_BloodyHandsPenaltyChancePerAgent;
 	
 	void PlayerBase()
 	{	
@@ -543,6 +545,9 @@ class PlayerBase extends ManBase
 		
 		m_DecayedTexture = ConfigGetString("decayedTexture");
 		m_FliesIndex = -1;
+		
+		m_BloodyHandsPenaltyChancePerAgent = new map<eAgents, float>();
+		
 		GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).Call(this.OnPlayerLoaded);
 	}
 	
@@ -1104,8 +1109,8 @@ class PlayerBase extends ManBase
 			}
 		}
 		
-		 //! DT_EXPLOSION & FlashGrenade
-		if (damageType == DT_EXPLOSION && ammo == "FlashGrenade_Ammo")
+		 //! DamageType.EXPLOSION & FlashGrenade
+		if (damageType == DamageType.EXPLOSION && ammo == "FlashGrenade_Ammo")
 		{
 			GetStaminaHandler().DepleteStamina(EStaminaModifiers.OVERALL_DRAIN);
 		}
@@ -1402,7 +1407,7 @@ class PlayerBase extends ManBase
 				}
 			}
 			
-			clothing.UpdateNVGStatus(this);
+			clothing.UpdateNVGStatus(this, false, true);
 			GetGame().GetCallQueue(CALL_CATEGORY_GUI).CallLater(UpdateCorpseStateVisual, 200, false);//sometimes it takes a while to load in
 			UpdateCorpseStateVisual();//....but if possible, we don't want a delay
 		}
@@ -1974,16 +1979,7 @@ class PlayerBase extends ManBase
 		return super.CanReceiveItemIntoHands(item_to_hands);
 	}
 	
-	override bool CanSaveItemInHands(EntityAI item_in_hands)
-	{
-		return super.CanSaveItemInHands(item_in_hands);
-	}
-	
-	override bool CanReleaseFromHands(EntityAI handheld)
-	{
-		return super.CanReleaseFromHands(handheld);
-	}
-	
+
 	int GetCraftingRecipeID()
 	{
 		if (GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_CLIENT)
@@ -2279,17 +2275,15 @@ class PlayerBase extends ManBase
 			if (m_Hud)
 			{
 				m_Hud.UpdateBloodName();
-				PPERequesterBank.GetRequester(PPERequester_DeathDarkening).Stop();
-				PPERequesterBank.GetRequester(PPERequester_ShockHitReaction).Stop();
-				PPERequesterBank.GetRequester(PPERequester_UnconEffects).Stop();
+				PPEManagerStatic.GetPPEManager().StopAllEffects(PPERequesterCategory.GAMEPLAY_EFFECTS);
 				GetGame().GetUIManager().CloseAll();
 				GetGame().GetMission().SetPlayerRespawning(false);
 				GetGame().GetMission().OnPlayerRespawned(this);
 				
-				m_Hud.ShowHudUI(true);
 				m_Hud.ShowQuickbarUI(true);
 				m_Hud.UpdateQuickbarGlobalVisibility();
 				m_Hud.InitHeatBufferUI(this);
+				m_Hud.OnPlayerLoaded();
 			}
 			m_EffectWidgets = GetGame().GetMission().GetEffectWidgets();
 		}
@@ -2490,16 +2484,24 @@ class PlayerBase extends ManBase
 	{
 		if (GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_CLIENT && GetGame().IsMultiplayer())
 		{
-			if (ScriptInputUserData.CanStoreInputUserData())
-			{
-				ScriptInputUserData ctx = new ScriptInputUserData;
-				ctx.Write(INPUT_UDT_RESET_ADS);
-				ctx.Send();
-			}
+			m_ProcessResetADS = true;
+			ProcessADSSyncResetRequest();
 		}
 		else if (!GetGame().IsMultiplayer())
 		{
 			m_ResetADS = true;
+		}
+	}
+	
+	void ProcessADSSyncResetRequest()
+	{
+		if (ScriptInputUserData.CanStoreInputUserData())
+		{
+			ScriptInputUserData ctx = new ScriptInputUserData;
+			ctx.Write(INPUT_UDT_RESET_ADS);
+			ctx.Send();
+			
+			m_ProcessResetADS = false;
 		}
 	}
 	
@@ -2546,9 +2548,10 @@ class PlayerBase extends ManBase
 					ScriptInputUserData ctx = new ScriptInputUserData;
 					ctx.Write(INPUT_UDT_ADVANCED_PLACEMENT);
 					ctx.Send();
+					
+					PlacingCancelLocal();
 				}
 			}
-			PlacingCancelLocal();
 		}
 		else if (!item)
 		{
@@ -2563,6 +2566,13 @@ class PlayerBase extends ManBase
 	void SetLocalProjectionPosition(vector local_position)
 	{
 		m_LocalProjectionPosition = local_position;
+		
+		#ifdef DEVELOPER
+		if (IsCLIParam("hologramLogs"))
+		{
+			Debug.Log(string.Format("SetLocalProjectionPosition | pos: %1", m_LocalProjectionPosition), "hologramLogs");
+		}
+		#endif
 	}
 	
 	void SetLocalProjectionOrientation(vector local_orientation)
@@ -2756,6 +2766,9 @@ class PlayerBase extends ManBase
 
 		if (CfgGameplayHandler.GetAllowStaminaAffectInertia())
 			UpdateMovementInertia();
+		
+		if (m_ProcessResetADS)
+			ProcessADSSyncResetRequest();
 	}
 	
 	//! Update movement inertia based on stamina available
@@ -2825,6 +2838,10 @@ class PlayerBase extends ManBase
 				}
 			}
 			
+			SurrenderDummyItem dummyItem;
+			if (Class.CastTo(dummyItem, item) && GetEmoteManager())
+				GetEmoteManager().ForceSurrenderState(true);
+			
 			OnItemInHandsChanged();
 		}
 	}
@@ -2879,8 +2896,6 @@ class PlayerBase extends ManBase
 				}
 			}
 		}
-			
-		GetDayZPlayerInventory().HandleInventory(pDt);
 		
 		if (IsFireWeaponRaised() || m_IsHoldingBreath)
 		{
@@ -2944,7 +2959,6 @@ class PlayerBase extends ManBase
 			FreezeCheck();
 		}
 		
-		GetHumanInventory().Update(pDt);
 		if (m_IsDrowning)
 		{
 			ProcessDrowning(pDt);
@@ -3074,16 +3088,16 @@ class PlayerBase extends ManBase
 				mngr.Update(); // checks for suitable action and sets it
 			}*/
 		}
+			
 		if (m_StaminaHandler && hic)
 		{
-			//! SPRINT: enable/disable - based on stamina; disable also when raised
-			if (!CanConsumeStamina(EStaminaConsumers.SPRINT) || !CanSprint())
+			HumanCommandMove hcm = GetCommand_Move();		
+			bool isSwimmingOrClimbing = GetCommand_Swim() || GetCommand_Climb() || GetCommand_Ladder();		
+			bool isStaminaLimitAppliable = hcm || isSwimmingOrClimbing;	
+			
+			if (isStaminaLimitAppliable)
 			{
-				hic.LimitsDisableSprint(true);
-			}
-			else
-			{
-				hic.LimitsDisableSprint(false);
+				hic.LimitsDisableSprint(!(CanConsumeStamina(EStaminaConsumers.SPRINT) && CanSprint()));
 			}
 		}
 
@@ -3199,7 +3213,6 @@ class PlayerBase extends ManBase
 				GetGame().GetUIManager().FindMenu(MENU_MAP).Close();
 				if (m_Hud)
 				{
-					m_Hud.ShowHudPlayer(true);
 					m_Hud.ShowQuickbarPlayer(true);
 				}
 				
@@ -3231,7 +3244,7 @@ class PlayerBase extends ManBase
 	
 	bool IsMapCallbackCancelInput()
 	{
-		if (IsRaised() || (GetUApi().GetInputByID(UAUIMenu).LocalPress() || GetUApi().GetInputByID(UAGear).LocalPress()))
+		if (IsRaised())
 		{
 			return true;
 		}
@@ -3241,7 +3254,7 @@ class PlayerBase extends ManBase
 	
 	bool IsMapCallbackEndInput()
 	{
-		if (GetUApi().GetInputByID(UADefaultAction).LocalPress())
+		if (GetUApi().GetInputByID(UADefaultAction).LocalPress() || GetUApi().GetInputByID(UAUIMenu).LocalPress() || GetUApi().GetInputByID(UAGear).LocalPress())
 		{
 			return true;
 		}
@@ -3359,6 +3372,7 @@ class PlayerBase extends ManBase
 		
 		if (GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_CLIENT)
 		{
+			GetGame().GetMission().GetHud().ShowHudUI(false);
 			SetInventorySoftLock(true);
 			if (m_LastCommandBeforeUnconscious != DayZPlayerConstants.COMMANDID_VEHICLE)
 			{
@@ -3411,11 +3425,12 @@ class PlayerBase extends ManBase
 		m_UnconsciousVignetteTarget = 2;
 		if (GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_CLIENT) 
 		{
+			GetGame().GetMission().GetHud().ShowHudUI(true);
 			if (pCurrentCommandID != DayZPlayerConstants.COMMANDID_DEATH)
 			{
 				GetGame().GetSoundScene().SetSoundVolume(g_Game.m_volume_sound,1);
-				PPERequesterBank.GetRequester(PPERequester_UnconEffects).Stop();
-				GetGame().GetMission().GetHud().ShowHudUI(true);
+				PPERequester_UnconEffects requester = PPERequester_UnconEffects.Cast(PPERequesterBank.GetRequester(PPERequester_UnconEffects));
+				requester.FadeOutEffect(); //fading
 				GetGame().GetMission().GetHud().ShowQuickbarUI(true);
 				if (GetGame().GetUIManager().IsDialogVisible())
 				{
@@ -3462,18 +3477,20 @@ class PlayerBase extends ManBase
 
 			if (m_UnconsciousTime > PlayerConstants.UNCONSCIOUS_IN_WATER_TIME_LIMIT_TO_DEATH && last_command == DayZPlayerConstants.COMMANDID_SWIM)
 			{
+				PluginAdminLog adm = PluginAdminLog.Cast(GetPlugin(PluginAdminLog));
+				adm.PlayerKilledByDrowningUncon(this);
+
 				SetHealth("","",-100);
 			}
 		}
 		if (GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_CLIENT)
 		{
-			GetGame().GetMission().GetHud().ShowHudUI(false);
 			GetGame().GetMission().GetHud().ShowQuickbarUI(false);
 			if (GetPulseType() == EPulseType.REGULAR)
 			{
 				float shock_simple_normalized = GetSimplifiedShockNormalized();
 	
-				float sin = Math.Sin(m_UnconsciousTime * 0.3);
+				float sin = Math.Sin(m_UnconsciousTime * 0.35);
 				float sin_normalized = (sin + 1) / 2;
 				if (sin_normalized < 0.05)
 				{
@@ -3779,7 +3796,9 @@ class PlayerBase extends ManBase
 			if (itemInHands.IsHeavyBehaviour())
 			{
 				TryHideItemInHands(false);
-				DropHeavyItem();
+				#ifdef SERVER
+				ServerDropEntity(itemInHands); // Let server handle the hand item drop
+				#endif
 			}
 			else
 			{
@@ -3858,6 +3877,9 @@ class PlayerBase extends ManBase
 		if (GetInventory())
 			GetInventory().UnlockInventory(LOCK_FROM_SCRIPT);
 		
+		// properly finish jump in case it was interrupted by smth (heavy hit for example in the FOV expoit)		
+		m_JumpClimb.CheckAndFinishJump();
+		
 		GetWeaponManager().RefreshAnimationState();
 	}
 	
@@ -3911,7 +3933,8 @@ class PlayerBase extends ManBase
 		if (GetInventory())
 			GetInventory().UnlockInventory(LOCK_FROM_SCRIPT);
 		
-		TryHideItemInHands(false, true);
+		if (!m_ShouldBeUnconscious)
+			TryHideItemInHands(false, true);
 		
 		GetGame().GetMission().RemoveActiveInputExcludes({"vehicledriving"});
 	}	
@@ -4000,11 +4023,13 @@ class PlayerBase extends ManBase
 	
 	override bool CanChangeStance(int previousStance, int newStance)
 	{
+		// Check if the player is trying to perform restricted action while changing stance
+		if (GetActionManager() && GetActionManager().GetRunningAction() && !GetActionManager().GetRunningAction().CanBePerformedWhileChangingStance())
+			return false;
+
 		// Check if the player is playing a throwing animation
 		if (GetThrowing().IsThrowingAnimationPlaying())
-		{
 			return false;
-		}
 		
 		// don't allow base stance change, only raised hands change
 		if (IsRolling()) 
@@ -4316,17 +4341,18 @@ class PlayerBase extends ManBase
 			m_Hud.SetStaminaBarVisibility(show);
 	}
 	
-	override void DepleteStamina(EStaminaModifiers modifier, float dT = -1)
+	override void DepleteStaminaEx(EStaminaModifiers modifier, float dT = -1, float coef = 1.0)
 	{
 		if (GetStaminaHandler())
-			GetStaminaHandler().DepleteStamina(modifier,dT);		
+			GetStaminaHandler().DepleteStaminaEx(modifier,dT,coef);
 	}
 
 	override bool CanConsumeStamina(EStaminaConsumers consumer)
 	{
-		if (!GetStaminaHandler()) return false;
+		if (!GetStaminaHandler())
+			return false;
 		
-		bool val = (GetStaminaHandler().HasEnoughStaminaFor(consumer) /*&& !IsOverloaded()*/ && !IsRestrained() && !IsInFBEmoteState());
+		bool val = (GetStaminaHandler().HasEnoughStaminaFor(consumer) && !IsRestrained() && !IsInFBEmoteState());
 		
 		if (!val)
 			StaminaHUDNotifier(false);
@@ -4336,7 +4362,8 @@ class PlayerBase extends ManBase
 	
 	override bool CanStartConsumingStamina(EStaminaConsumers consumer)
 	{
-		if (!GetStaminaHandler()) return false;
+		if (!GetStaminaHandler())
+			return false;
 		
 		bool val = (GetStaminaHandler().HasEnoughStaminaToStart(consumer) && !IsRestrained() && !IsInFBEmoteState());
 		
@@ -5148,7 +5175,7 @@ class PlayerBase extends ManBase
 	
 	bool IsSprinting()
 	{
-		return m_MovementState.m_iMovement == DayZPlayerConstants.MOVEMENT_SPRINT);
+		return m_MovementState.m_iMovement == DayZPlayerConstants.MOVEMENT_SPRINT;
 	}
 
 	bool CanSprint()
@@ -5183,7 +5210,7 @@ class PlayerBase extends ManBase
 	
 	bool IsRolling()
 	{
-		return GetCommand_Move() && GetCommand_Move().IsInRoll());
+		return GetCommand_Move() && GetCommand_Move().IsInRoll();
 	}
 	
 	bool IsClimbing()
@@ -5357,7 +5384,7 @@ class PlayerBase extends ManBase
 			}	
 			case ERPCs.RPC_INIT_SET_QUICKBAR:
 				ref Param1<int> count = new Param1<int>(0); 
-				if (ctx.Read(count));
+				if (ctx.Read(count))
 				{
 					for (int i = 0; i < count.param1 ; i++)
 					{
@@ -5624,6 +5651,7 @@ class PlayerBase extends ManBase
 			if (!m_AmbientContamination && soundset != "")
 				PlaySoundSetLoop(m_AmbientContamination, soundset, 0.1, 0.1);
 			
+			SetSoundControllerOverride("contamination",1,SoundControllerAction.Overwrite);
 		}
 		else // disable
 		{
@@ -5645,6 +5673,7 @@ class PlayerBase extends ManBase
 			if (m_AmbientContamination)
 				StopSoundSet(m_AmbientContamination);
 			
+			SetSoundControllerOverride("contamination",0,SoundControllerAction.None);
 			// We make sure to reset the state
 		}
 		m_ContaminatedAreaEffectEnabled = enable;
@@ -6116,8 +6145,9 @@ class PlayerBase extends ManBase
 			{
 				if (!ctx.Read(item1))
 					return false;
+				
 				InventoryLocation dst = new InventoryLocation;
-				if (dst.ReadFromContext(ctx))
+				if (item1 && dst.ReadFromContext(ctx))
 				{
 					//Print(InventoryLocation.DumpToStringNullSafe(dst));
 					bool dummy;
@@ -6171,12 +6201,11 @@ class PlayerBase extends ManBase
 	// -------------------------------------------------------------------------
 	ItemBase GetItemInHands()
 	{
-		if (GetHumanInventory())
-		{
-			return ItemBase.Cast(GetHumanInventory().GetEntityInHands());
-		}
+		HumanInventory humanInventory = GetHumanInventory();
+		if (humanInventory)
+			return ItemBase.Cast(humanInventory.GetEntityInHands());
+
 		return null;
-		
 	}
 
 	//--------------------------------------------------------------------------
@@ -6209,6 +6238,12 @@ class PlayerBase extends ManBase
 			}
 		}
 		return null;
+	}
+	
+	EntityAI SpawnEntityOnGroundRaycastDispersed(string object_name, float raycastDistance = DEFAULT_SPAWN_DISTANCE, float radius = UAItemsSpreadRadius.DEFAULT)
+	{
+		vector posRandom = MiscGameplayFunctions.GetRandomizedPositionVerifiedPlayer(this,raycastDistance,radius,this);
+		return SpawnEntityOnGroundPos(object_name,posRandom);
 	}
 
 	EntityAI SpawnEntityOnGroundOnCursorDir(string object_name, float distance)
@@ -6641,9 +6676,43 @@ class PlayerBase extends ManBase
 		#endif
 	}
 	
-	void SetBloodyHandsPenalty()
+	int GetBloodyHandsPenaltyAgents()
 	{
-		InsertAgent(eAgents.SALMONELLA, 1);
+		if (HasBloodyHands())
+		{
+			if (GetInventory().FindAttachment(InventorySlots.GLOVES))
+				return 0;
+
+			float randomValue = Math.RandomFloat01();
+			if (GetBloodyHandsPenaltyChancePerAgent(eAgents.SALMONELLA) >= randomValue)
+				return eAgents.SALMONELLA;
+
+			return eAgents.FOOD_POISON;
+		}
+		
+		return 0;
+	}
+	
+	float GetBloodyHandsPenaltyChancePerAgent(eAgents type)
+	{
+		float value = 0.0;
+		if (m_BloodyHandsPenaltyChancePerAgent.Find(type, value))
+			return value;
+		
+		return value;
+	}
+	
+	//! increments the chances per agents
+	void SetBloodyHandsPenaltyChancePerAgent(eAgents type, float amount)
+	{
+		float storedValue = GetBloodyHandsPenaltyChancePerAgent(type);
+		if (amount > storedValue)
+			m_BloodyHandsPenaltyChancePerAgent.Set(type, Math.Clamp(amount, 0.0, 1.0));
+	}
+	
+	void ClearBloodyHandsPenaltyChancePerAgent(eAgents type)
+	{
+		m_BloodyHandsPenaltyChancePerAgent.Set(type, 0.0);
 	}
 	
 	bool HasBloodTypeVisible()
@@ -6809,75 +6878,34 @@ class PlayerBase extends ManBase
 				return false;
 			}
 			
-			if (version < m_ModifiersManager.GetStorageVersion())//load modifiers !! WILL CANCEL REST OF STREAM IF UNSUPPORTED VERSION !!
+			if (!m_ModifiersManager.OnStoreLoad(ctx, version))
 			{
-				Print("---- failed to load ModifiersManager, unsupported version   ----");
+				Print("---- failed to load ModifiersManager, read fail  ----");
 				return false;
 			}
-			else
-			{
-				if (!m_ModifiersManager.OnStoreLoad(ctx, version))
-				{
-					Print("---- failed to load ModifiersManager, read fail  ----");
-					return false;
-				}
-			}
 			
-			if (version < m_AgentPool.GetStorageVersion())//load agents !! WILL CANCEL REST OF STREAM IF UNSUPPORTED VERSION !!
+			if (!m_AgentPool.OnStoreLoad(ctx, version))
 			{
-				Print("---- failed to load AgentPool, unsupported version   ----");
+				Print("---- failed to load AgentPool, read fail  ----");
 				return false;
 			}
-			else
-			{
-				if (!m_AgentPool.OnStoreLoad(ctx, version))
-				{
-					Print("---- failed to load AgentPool, read fail  ----");
-					return false;
-				}
-			}
 			
-			
-			if (version < GetSymptomManager().GetStorageVersion())//load symptoms !! WILL CANCEL REST OF STREAM IF UNSUPPORTED VERSION !!
+			if (!GetSymptomManager().OnStoreLoad(ctx, version))
 			{
-				Print("---- failed to load SymptomManager, unsupported version   ----");
+				Print("---- failed to load SymptomManager, read fail  ----");
 				return false;
 			}
-			else
-			{
-				if (!GetSymptomManager().OnStoreLoad(ctx, version))
-				{
-					Print("---- failed to load SymptomManager, read fail  ----");
-					return false;
-				}
-			}
 			
-			if (version < GetBleedingManagerServer().GetStorageVersion())//load bleeding manager !! WILL CANCEL REST OF STREAM IF UNSUPPORTED VERSION !!
+			if (!GetBleedingManagerServer().OnStoreLoad(ctx, version))
 			{
-				Print("---- failed to load BleedingManagerServer, unsupported version  ----");
+				Print("---- failed to load BleedingManagerServer, read fail  ----");
 				return false;
 			}
-			else
-			{
-				if (!GetBleedingManagerServer().OnStoreLoad(ctx, version))
-				{
-					Print("---- failed to load BleedingManagerServer, read fail  ----");
-					return false;
-				}
-			}
 			
-			if (version < m_PlayerStomach.GetStorageVersion())//load PlayerStomach !! WILL CANCEL REST OF STREAM IF UNSUPPORTED VERSION !!
+			if (!m_PlayerStomach.OnStoreLoad(ctx, version))
 			{
-				Print("---- failed to load PlayerStomach, unsupported version  ----");
+				Print("---- failed to load PlayerStomach, read fail  ----");
 				return false;
-			}
-			else
-			{
-				if (!m_PlayerStomach.OnStoreLoad(ctx, version))
-				{
-					Print("---- failed to load PlayerStomach, read fail  ----");
-					return false;
-				}
 			}
 			
 			//Check for broken leg value
@@ -7078,99 +7106,69 @@ class PlayerBase extends ManBase
 	{
 		GetModifiersManager().SetModifiers(enable);
 	}
-
-	bool Consume(ItemBase source, float amount, EConsumeType consume_type)
+	
+	bool Consume(PlayerConsumeData data)
 	{
 		PluginTransmissionAgents plugin = PluginTransmissionAgents.Cast(GetPlugin(PluginTransmissionAgents));
-		int agents;
 		int pollution = GetGame().GetMission().GetWorldData().GetPollution();
 		float temperature = 0;
 		
-		if (consume_type == EConsumeType.ENVIRO_POND || consume_type == EConsumeType.ENVIRO_WELL)
+		if (data.m_Type == EConsumeType.ENVIRO_POND || data.m_Type == EConsumeType.ENVIRO_WELL || data.m_Type == EConsumeType.ENVIRO_SNOW)
 		{
-			if (consume_type == EConsumeType.ENVIRO_POND)
+			if (data.m_Type != EConsumeType.ENVIRO_WELL)
 			{
 				if (pollution & EPollution.HEAVYMETAL)
-				{
-					agents = agents | eAgents.HEAVYMETAL;
-				}
-				agents = agents | eAgents.CHOLERA;
-				//plugin.TransmitAgents(NULL, this, AGT_WATER_POND, amount);
+					data.m_Agents = data.m_Agents | eAgents.HEAVYMETAL;
+
+				if (data.m_Type == EConsumeType.ENVIRO_POND)
+					data.m_Agents = data.m_Agents | eAgents.CHOLERA;
 			}
-			temperature = GetGame().GetMission().GetWorldData().GetLiquidTypeEnviroTemperature(consume_type);
-			m_PlayerStomach.AddToStomach(Liquid.GetLiquidClassname(LIQUID_WATER), amount, 0 , agents, temperature);
-			
+
+			temperature = GetGame().GetMission().GetWorldData().GetLiquidTypeEnviroTemperature(data.m_LiquidType);
+			m_PlayerStomach.AddToStomach(Liquid.GetLiquidClassname(LIQUID_WATER), data.m_Amount, 0 , data.m_Agents, temperature);
 			
 			return true;
 		}
-		if (consume_type == EConsumeType.ENVIRO_SNOW)
-		{
-			if (pollution & EPollution.HEAVYMETAL)
-			{
-				agents = agents | eAgents.HEAVYMETAL;
-			}
-			temperature = GetGame().GetMission().GetWorldData().GetLiquidTypeEnviroTemperature(consume_type);
-			m_PlayerStomach.AddToStomach(Liquid.GetLiquidClassname(LIQUID_WATER), amount, 0 , agents, temperature);
-		}
 		
-		Edible_Base edible_item = Edible_Base.Cast(source);
-		if (!edible_item || edible_item.GetIsFrozen())
-		{
+		Edible_Base edibleItem = Edible_Base.Cast(data.m_Source);
+		if (!edibleItem || !edibleItem.CanBeConsumed())
 			return false;
-		}
-		
-		agents = edible_item.FilterAgents(edible_item.GetAgents());
-		temperature = edible_item.GetTemperature();
-		
-		if (consume_type == EConsumeType.ITEM_SINGLE_TIME || consume_type == EConsumeType.ITEM_CONTINUOUS)
+
+		if (data.m_Type == EConsumeType.ITEM_SINGLE_TIME || data.m_Type == EConsumeType.ITEM_CONTINUOUS)
 		{
-			if (consume_type == EConsumeType.ITEM_SINGLE_TIME)
+			data.m_Agents = edibleItem.FilterAgents(data.m_Agents | edibleItem.GetAgents());
+			temperature = edibleItem.GetTemperature();
+
+			if (data.m_Type == EConsumeType.ITEM_SINGLE_TIME)
+				plugin.TransmitAgents(edibleItem, this, AGT_UACTION_CONSUME, data.m_Amount);
+
+			if (edibleItem.IsLiquidContainer())
 			{
-				plugin.TransmitAgents(edible_item, this, AGT_UACTION_CONSUME, amount);
+				int liquidType = edibleItem.GetLiquidType();
+				string liquidClassName = Liquid.GetLiquidClassname(liquidType);
+				if (liquidClassName.Length() == 0)
+					Error("Error! Trying to add unknown liquid to stomach with item=" + Object.GetDebugName(edibleItem) + " data.m_Type=" + data.m_Type + " liquid_type=" + liquidType);
+
+				m_PlayerStomach.AddToStomach(liquidClassName, data.m_Amount, 0, data.m_Agents, temperature);
 			}
-			/*
 			else
 			{
-				plugin.TransmitAgents(edible_item, this, AGT_UACTION_TO_PLAYER, amount);
+				int foodStageType;
+				if (edibleItem.GetFoodStage())
+					foodStageType = edibleItem.GetFoodStage().GetFoodStageType();
+
+				m_PlayerStomach.AddToStomach(data.m_Source.GetType(), data.m_Amount, foodStageType, data.m_Agents, temperature);
 			}
-			*/
-			if (edible_item.IsLiquidContainer())
-			{
-				int liquid_type = edible_item.GetLiquidType();
-				string liquidClassName = Liquid.GetLiquidClassname(liquid_type);
-				if (liquidClassName.Length() == 0)
-					Error("Error! Trying to add unknown liquid to stomach with item=" + Object.GetDebugName(edible_item) + " consume_type=" + consume_type + " liquid_type=" + liquid_type);
-				m_PlayerStomach.AddToStomach(liquidClassName, amount, 0, agents, temperature);
-			}
-			else 
-			{
-				int food_stage_type;
-				if (edible_item.GetFoodStage())
-				{
-					food_stage_type = edible_item.GetFoodStage().GetFoodStageType();
-				}
-				m_PlayerStomach.AddToStomach(source.GetType(), amount, food_stage_type, agents, temperature);
-			}
-			edible_item.Consume(amount, this);
+
+			edibleItem.Consume(data.m_Amount, this);
+
 			return true;
 
 		}
-		/*
-		if (consume_type == EConsumeType.ITEM_CONTINUOUS)
-		{
-			if (edible_item)
-			{
-				plugin.TransmitAgents(edible_item, this, AGT_UACTION_TO_PLAYER, amount);
-				edible_item.Consume(amount, this);
-				//ProcessNutritions(edible_item.GetNutritionalProfile(),amount);
-				m_PlayerStomach.AddToStomach(source.GetType(), amount, edible_item.GetNutritionalProfile());
-				return true;
-			}
-		}
-		*/
-		return false;
+
+		return false;	
 	}
-	
+
 	void ShowUnconsciousScreen(bool show)
 	{
 	#ifndef NO_GUI
@@ -7381,6 +7379,7 @@ class PlayerBase extends ManBase
 			//remove bloody hands
 			PluginLifespan moduleLifespan = PluginLifespan.Cast(GetPlugin(PluginLifespan));
 			moduleLifespan.UpdateBloodyHandsVisibilityEx(this, eBloodyHandsTypes.CLEAN);
+			ClearBloodyHandsPenaltyChancePerAgent(eAgents.SALMONELLA);
 			
 			if (GetArrowManager())
 				GetArrowManager().ClearArrows();
@@ -7550,6 +7549,11 @@ class PlayerBase extends ManBase
 	{
 		m_AgentPool.SetTemporaryResistance(agent, time);
 	}
+	
+	float GetTemporaryResistanceToAgent(int agent)
+	{
+		return m_AgentPool.GetTemporaryResistance(agent);
+	}
 
 	//Get aim (player crosshair) position
 	vector GetAimPosition()
@@ -7572,6 +7576,11 @@ class PlayerBase extends ManBase
 	{
 		ItemBase mask = ItemBase.Cast(GetInventory().FindAttachment(InventorySlots.MASK));
 		return (!mask || (mask && mask.AllowFoodConsumption()));
+	}
+	
+	bool CanConsumeFood(ConsumeConditionData data = null)
+	{
+		return true;
 	}
 	
 	//get modifier manager
@@ -7749,7 +7758,33 @@ class PlayerBase extends ManBase
 		}
 #endif
 		
-		return super.OnAction(action_id, player, ctx);
+		if (super.OnAction(action_id, player, ctx))
+			return true;
+
+		if (GetGame().IsClient() || !GetGame().IsMultiplayer())
+		{
+			switch (action_id)
+			{
+				case EActions.GIZMO_OBJECT:
+					GetGame().GizmoSelectObject(this);
+					return true;
+				case EActions.GIZMO_PHYSICS:
+					GetGame().GizmoSelectPhysics(GetPhysics());
+					return true;
+			}
+		}
+	
+		if (GetGame().IsServer())
+		{
+			switch (action_id)
+			{
+				case EActions.DELETE:
+					Delete();
+					return true;
+			}
+		}
+
+		return false;
 	}
 	
 	// -------------------------------------------------------------------------
@@ -7759,7 +7794,11 @@ class PlayerBase extends ManBase
 		
 		PluginTransmissionAgents pluginTransmissionAgents = PluginTransmissionAgents.Cast(GetPlugin(PluginTransmissionAgents));
 		
-		if (pluginTransmissionAgents)
+#ifdef DIAG_DEVELOPER
+		if (pluginTransmissionAgents && !(m_Bot || GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_AI_REMOTE))
+#else
+		if (pluginTransmissionAgents && !(GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_AI_REMOTE))
+#endif
 		{
 			map<int, string> agentList = pluginTransmissionAgents.GetSimpleAgentList();
 			
@@ -7774,13 +7813,13 @@ class PlayerBase extends ManBase
 					outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.DEBUG_AGENTS_RANGE_REMOVE_START + tid, removeName, Colors.WHITE));
 				}
 			}
+
+			outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 		}
 		
 #ifdef DIAG_DEVELOPER
 		if (m_Bot || GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_AI_REMOTE)
 		{
-			outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
-			
 			typename e = EActions;
 			
 			int cnt = e.GetVariableCount();
@@ -7807,8 +7846,21 @@ class PlayerBase extends ManBase
 				
 				outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, val, name, FadeColors.LIGHT_GREY));
 			}
+
+			outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 		}
 #endif
+
+		super.GetDebugActions(outputList);
+
+		if (Gizmo_IsSupported())
+			outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.GIZMO_OBJECT, "Gizmo Object", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.GIZMO_PHYSICS, "Gizmo Physics (SP Only)", FadeColors.LIGHT_GREY)); // intentionally allowed for testing physics desync
+		if (GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_AI_SINGLEPLAYER) // Prevent deleting ourselves
+		{
+			outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.DELETE, "Delete", FadeColors.RED));
+		}
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 	}		
 
 	//-------------------------------------------------------------
@@ -8048,15 +8100,52 @@ class PlayerBase extends ManBase
 	{
 		return m_LiftWeapon_player;
 	}
+		
+	override float GetWeaponObstruction()
+	{
+		return m_ObstructWeapon_player;
+	}
+		
+	override bool IsWeaponObstructionBlockingADS()
+	{
+		Weapon_Base weapon = Weapon_Base.Cast(GetItemInHands());
+		if (!weapon) 
+			return false;
+		
+		// Recompute the relative obstruction [0 ... 1] value into actual distance ...
+		float obstruction = GetWeaponObstruction();
+			
+		// ... unless there is no obstruction to begin with at which point the
+		// additional checks are rendered competely irrelevant.
+		if (obstruction <= 0.0)
+		{
+			return false;
+		}
+			
+		float penetration = weapon.GetObstructionPenetrationDistance(obstruction);
+		bool  inSights    = m_CameraIronsight || m_CameraOptics;
+		// Create a threshold that allows the user to remain in ADS for lesser obstruction
+		// values, significantly reducing the continuous state changes near the edge.
+		if (inSights)
+		{
+			return penetration > 0.040; // 4.0 cm
+		}
+		// Prevent the user from entering ADS if there is even a tiny fraction of obstruction,
+		// further reinforcing the statement above.
+		else
+		{
+			return penetration > 0.005; // 0.5 cm
+		}
+	}
 	
 	//Server
 	bool ReadLiftWeaponRequest(int userDataType, ParamsReadContext ctx)
 	{
 		bool state;
+		float obstruct;
 		ctx.Read(state);
-		
-		
-		SetLiftWeapon(state);
+		ctx.Read(obstruct);
+		SetLiftWeapon(state, obstruct);
 		
 		return true;
 	}
@@ -8064,33 +8153,45 @@ class PlayerBase extends ManBase
 	void SetLiftWeapon(int pJunctureID, ParamsReadContext ctx) // Obsolete
 	{
 		bool state;
+		float obstruct;
 		ctx.Read(state);
+		ctx.Read(obstruct);
 		
-		SetLiftWeapon(state);
+		SetLiftWeapon(state, obstruct);
 		
 		//Print("SetLiftWeapon | STS: " + GetSimulationTimeStamp());
 	}
 	
-	void SetLiftWeapon(bool state)
+	void SetLiftWeapon(bool state, float obstruct = 0)
 	{
 		m_ProcessLiftWeaponState = state;
 		m_ProcessLiftWeapon = true;
+		m_ProcessObstructWeapon = obstruct;
 	}
 	
 	//! Client-side only
-	void SendLiftWeaponSync(bool state)
+	void SendLiftWeaponSync(bool state, float obstruct = 0)
 	{
 		HumanCommandWeapons	hcw;
+			
+		bool liftChange = m_LiftWeapon_player != state;
+		bool obstructChange = Math.AbsFloat(m_ObstructWeapon_player-obstruct) > 0.03;
 		
 		// Apply state immediately
 		m_LiftWeapon_player = state;
+		m_ObstructWeapon_player = obstruct;
 		
-		hcw = GetCommandModifier_Weapons();
-		if (hcw)
-			hcw.LiftWeapon(state);
-		
-		GetWeaponManager().OnLiftWeapon();
-		
+		if (liftChange)
+		{
+			GetWeaponManager().OnLiftWeapon();
+		}
+			
+		if (!liftChange && !obstructChange) 
+		{
+			// insignificant difference
+			return;
+		}
+			
 		// Notify server to apply same state
 		if (GetGame().IsMultiplayer() && GetGame().IsClient())
 		{
@@ -8103,6 +8204,7 @@ class PlayerBase extends ManBase
 			
 			ctx.Write(INPUT_UDT_WEAPON_LIFT_EVENT);
 			ctx.Write(state);
+			ctx.Write(obstruct);
 			ctx.Send();
 		}
 	}
@@ -8114,15 +8216,27 @@ class PlayerBase extends ManBase
 		{
 			Weapon_Base weap;
 			if (Weapon_Base.CastTo(weap, GetItemInHands()))
-			{				
-				bool limited = weap.LiftWeaponCheck(this);
-
-				if (limited && !m_LiftWeapon_player)
-					SendLiftWeaponSync(true);
-				else if (!limited && m_LiftWeapon_player)
-					SendLiftWeaponSync(false);
+			{
+				Object hitObject;
+				float obstruct;
+				bool limited = weap.LiftWeaponCheckEx(this, obstruct, hitObject);
+				if (weap.UseWeaponObstruction(this, obstruct, hitObject))
+				{
+					limited = false;
+				}
+				else
+				{
+					obstruct =  0.0;
+				}
+				
+				obstruct = Math.Clamp( obstruct, 0, 1 );
+				
+				if (m_LiftWeapon_player != limited || m_ObstructWeapon_player != obstruct)
+				{
+					SendLiftWeaponSync(limited, obstruct);
+				}
 			}
-			else if (m_LiftWeapon_player)
+			else if (m_LiftWeapon_player || m_ObstructWeapon_player > 0)
 			{
 				SendLiftWeaponSync(false);
 			}
@@ -8133,12 +8247,13 @@ class PlayerBase extends ManBase
 	{
 		if (m_ProcessLiftWeapon)
 		{
-			HumanCommandWeapons	hcw = GetCommandModifier_Weapons();
-			if (hcw)
-				hcw.LiftWeapon(m_ProcessLiftWeaponState);
-			
-			GetWeaponManager().OnLiftWeapon();
+			bool liftChange = m_LiftWeapon_player != m_ProcessLiftWeaponState;
+			if (liftChange)
+			{
+				GetWeaponManager().OnLiftWeapon();
+			}
 			m_LiftWeapon_player = m_ProcessLiftWeaponState;
+			m_ObstructWeapon_player = m_ProcessObstructWeapon;
 			m_ProcessLiftWeapon = false;
 			
 			//Debug.Log("SimulationStamp_server: " + this.GetSimulationTimeStamp());
@@ -8407,7 +8522,6 @@ class PlayerBase extends ManBase
 	
 	override bool PredictiveSwapEntities (notnull EntityAI item1, notnull EntityAI item2)
 	{
-		ForceStandUpForHeavyItemsSwap(item1, item2);
 		//Print("PlayerBase | PredictiveSwapEntities");
 		Magazine swapmag1 = Magazine.Cast(item1);
 		Magazine swapmag2 = Magazine.Cast(item2);
@@ -8466,8 +8580,6 @@ class PlayerBase extends ManBase
 	
 	override bool PredictiveForceSwapEntities (notnull EntityAI item1, notnull EntityAI item2, notnull InventoryLocation item2_dst)
 	{
-		ForceStandUpForHeavyItemsSwap(item1, item2);
-
 		InventoryLocation il = new InventoryLocation;	
 		if (item1.IsHeavyBehaviour() && item1.GetInventory().GetCurrentInventoryLocation(il) && il.GetType() == InventoryLocationType.GROUND && !m_ActionManager.GetRunningAction())
 		{		
@@ -9053,27 +9165,19 @@ class PlayerBase extends ManBase
 	//!
 	bool CheckAndExecuteStackSplit(FindInventoryLocationType flags, notnull EntityAI item, notnull EntityAI target)
 	{
-		float stackable = item.GetTargetQuantityMax();
-		if (!(stackable == 0 || stackable >= item.GetQuantity()))
+		InventoryLocation il = new InventoryLocation;
+		if (target.GetInventory().FindFreeLocationFor(item, flags, il))
 		{
-			InventoryLocation il = new InventoryLocation;
-			if (target && target.GetInventory().FindFreeLocationFor(item, flags, il))
-			{
-				ItemBase itemB;
-				if (CastTo(itemB, item))
-				{
-					itemB.SplitIntoStackMaxToInventoryLocationClient(il);
-					return true;
-				}
-			}
+			return CheckAndExecuteStackSplitToInventoryLocation(il,item);
 		}
 		return false;
 	}
 	
 	bool CheckAndExecuteStackSplitToInventoryLocation(InventoryLocation il, notnull EntityAI item)
 	{
-		float stackable = item.GetTargetQuantityMax();
-		if (!(stackable == 0 || stackable >= item.GetQuantity()))
+		int slotID = il.GetSlot();
+		float stackableTarget = item.GetTargetQuantityMax(slotID);
+		if (stackableTarget > 0 && stackableTarget < item.GetQuantity())
 		{
 			ItemBase itemB;
 			if (CastTo(itemB, item))
@@ -9363,6 +9467,17 @@ class PlayerBase extends ManBase
 	{
 		RemoveMedicalDrugsInUse(EMedicalDrugsType.ANTIBIOTICS);
 	}
+	
+	bool Consume(ItemBase source, float amount, EConsumeType consume_type)
+	{
+		PlayerConsumeData consumeData = new PlayerConsumeData();
+		consumeData.m_Type = consume_type;
+		consumeData.m_Amount = amount;
+		consumeData.m_Source = source;
+		consumeData.m_Agents = 0;
+
+		return Consume(consumeData);
+	}
 
 	bool HasStaminaRemaining()
 	{
@@ -9370,6 +9485,18 @@ class PlayerBase extends ManBase
 			return false;
 		
 		return GetStaminaHandler().GetStamina() > 0;
+	}
+
+	void SetBloodyHandsPenalty()
+	{
+		InsertAgent(eAgents.SALMONELLA, 1);
+	}
+	
+	//!Deprecated
+	override void DepleteStamina(EStaminaModifiers modifier, float dT = -1)
+	{
+		if (GetStaminaHandler())
+			GetStaminaHandler().DepleteStamina(modifier,dT);
 	}
 }
 

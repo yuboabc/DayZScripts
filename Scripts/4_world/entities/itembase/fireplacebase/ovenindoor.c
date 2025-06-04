@@ -29,6 +29,10 @@ class OvenIndoor extends FireplaceBase
 		
 		m_LightDistance = 50;
 		SetRoofAbove(true);
+		
+		m_UTSSettings.m_EnableOnTemperatureControl		= true;
+		m_UTSSettings.m_ActiveTemperatureThreshold 		= 250.0;
+		m_UTSSettings.m_InactiveTemperatureThreshold 	= 975.0;
 	}
 	
 	//================================================================
@@ -233,25 +237,15 @@ class OvenIndoor extends FireplaceBase
 		break;
 		}
 
-		// cookware-specifics (remove audio visuals)
-		if (item_base.Type() == ATTACHMENT_COOKING_POT)
+		// cookware-specifics (remove audio visuals and clear references)
+		if (item_base.IsCookware())
 		{
 			ClearCookingEquipment(item_base);
-			Bottle_Base cooking_pot = Bottle_Base.Cast(item);
-			cooking_pot.RemoveAudioVisualsOnClient();	
+			item_base.RemoveAudioVisualsOnClient();	
 		}
-		if (item_base.Type() == ATTACHMENT_CAULDRON)
-		{
-			ClearCookingEquipment(item_base);
-			Bottle_Base cauldron = Bottle_Base.Cast(item);
-			cauldron.RemoveAudioVisualsOnClient();	
-		}
-		if (item_base.Type() == ATTACHMENT_FRYING_PAN)
-		{
-			ClearCookingEquipment(item_base);
-			FryingPan frying_pan = FryingPan.Cast(item);
-			frying_pan.RemoveAudioVisualsOnClient();
-		}
+		
+		if (item_base.IsLiquidContainer()) //boiling bottle effects stop
+			item_base.RemoveAudioVisualsOnClient();
 		
 		RefreshFireplaceVisuals();
 	}
@@ -276,7 +270,7 @@ class OvenIndoor extends FireplaceBase
 		return false;
 	}
 	
-	override bool CanRemoveFromHands( EntityAI player ) 
+	override bool CanRemoveFromHands( EntityAI parent ) 
 	{
 		return false;
 	}
@@ -312,7 +306,7 @@ class OvenIndoor extends FireplaceBase
 		return IsBurning();
 	}
 	
-	override void OnIgnitedTarget( EntityAI ignited_item )
+	override void OnIgnitedTarget( EntityAI target_item )
 	{
 	}
 	

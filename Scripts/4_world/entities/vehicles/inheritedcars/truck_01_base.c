@@ -13,6 +13,7 @@ class Truck_01_Base extends CarScript
 		m_EngineStartBattery	= "Truck_01_engine_failed_start_battery_SoundSet";
 		m_EngineStartPlug 		= "Truck_01_engine_failed_start_sparkplugs_SoundSet";
 		m_EngineStartFuel 		= "Truck_01_engine_failed_start_fuel_SoundSet";
+		m_EngineStop 			= "Truck_01_engine_stop_SoundSet";
 		m_EngineStopFuel 		= "Truck_01_engine_stop_fuel_SoundSet";
 
 		m_CarDoorOpenSound 		= "Truck_01_door_open_SoundSet";
@@ -32,8 +33,6 @@ class Truck_01_Base extends CarScript
 		{
  			m_UTSSettings 						= new UniversalTemperatureSourceSettings();
 			m_UTSSettings.m_ManualUpdate 		= true;
-			m_UTSSettings.m_TemperatureMin		= 0;
-			m_UTSSettings.m_TemperatureMax		= 30;
 			m_UTSSettings.m_TemperatureItemCap 	= GameConstants.ITEM_TEMPERATURE_NEUTRAL_ZONE_MIDDLE;
 			m_UTSSettings.m_TemperatureCap		= 0;
 			m_UTSSettings.m_RangeFull			= 0.5;
@@ -134,12 +133,12 @@ class Truck_01_Base extends CarScript
 	{
 		if (slotSelectionName == "wheel_spare_1")
 		{
-			return GetAnimationPhase("wheelSidePlate1") == 1.0);
+			return GetAnimationPhase("wheelSidePlate1") == 1.0;
 		}
 		
 		if (slotSelectionName == "wheel_spare_2")
 		{
-			return GetAnimationPhase("wheelSidePlate2") == 1.0);
+			return GetAnimationPhase("wheelSidePlate2") == 1.0;
 		}
 		
 		return super.CanManipulateSpareWheel(slotSelectionName);
@@ -230,20 +229,21 @@ class Truck_01_Base extends CarScript
 		{
 		case "wheelsideplate1":
 		case "wheelsideplate2":
-			EffectSound sound;
+			EffectSound sound = CreateSoundForAnimationSource(animSource);
 			if (phase == 0)
 			{
-				sound = SEffectManager.PlaySound("Truck_01_Gear_Open_Side_Plate_SoundSet", GetPosition(), 0.1, 0.1);
+				sound.SetSoundSet("Truck_01_Gear_Open_Side_Plate_SoundSet");
 			}
 			else
 			{
-				sound = SEffectManager.PlaySound("Truck_01_Gear_Close_Side_Plate_SoundSet", GetPosition(), 0.1, 0.1);
+				sound.SetSoundSet("Truck_01_Gear_Close_Side_Plate_SoundSet");
 			}
+
+			sound.SetSoundFadeIn(0.1);
+			sound.SetSoundFadeOut(0.1);
 			
-			if (sound)
-			{
-				sound.SetAutodestroy(true);
-			}
+			SEffectManager.EffectRegister(sound);
+			sound.SoundPlay();
 		break;
 		}
 		#endif

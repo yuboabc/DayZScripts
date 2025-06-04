@@ -28,8 +28,8 @@ class CraftWoodenPlank extends RecipeBase
 		m_IngredientDestroy[0]			= false;		// true = destroy, false = do nothing
 		
 		//ingredient 2
-		InsertIngredient(1,"Hacksaw");
-		InsertIngredient(1,"HandSaw");
+		InsertIngredient(1,"Hacksaw", DayZPlayerConstants.CMD_ACTIONFB_SPLITTING_FIREWOOD, true);
+		InsertIngredient(1,"HandSaw", DayZPlayerConstants.CMD_ACTIONFB_SPLITTING_FIREWOOD, true);
 		
 		m_IngredientAddHealth[1]		= -7;
 		m_IngredientSetHealth[1]		= -1;
@@ -54,11 +54,5 @@ class CraftWoodenPlank extends RecipeBase
 	override bool CanDo(ItemBase ingredients[], PlayerBase player)
 	{
 		return true;
-	}
-
-	//gets called upon recipe's completion
-	override void Do(ItemBase ingredients[], PlayerBase player,array<ItemBase> results, float specialty_weight)
-	{
-		Debug.Log("Recipe Do method called","recipes");
 	}
 };

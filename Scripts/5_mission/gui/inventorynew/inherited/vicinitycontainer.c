@@ -1,10 +1,10 @@
 class VicinityContainer: CollapsibleContainer
 {
 	ref VicinitySlotsContainer			m_VicinityIconsContainer;
-	ref map<EntityAI, ref Container>	m_ShowedItems				= new ref map<EntityAI, ref Container>;
-	ref map<int, ref Container>			m_ShowedItemsIDs			= new ref map<int, ref Container>;
+	ref map<EntityAI, ref Container>	m_ShowedItems				= new map<EntityAI, ref Container>;
+	ref map<int, ref Container>			m_ShowedItemsIDs			= new map<int, ref Container>;
 	ref array<EntityAI>					m_ShowedItemIcons			= new array<EntityAI>;
-	ref map<CargoBase, ref Container>	m_ShowedCargos				= new ref map<CargoBase, ref Container>;
+	ref map<CargoBase, ref Container>	m_ShowedCargos				= new map<CargoBase, ref Container>;
 	protected bool						m_IsProcessing = false; // Prevents refreshing every time a child is added while it is still processing
 	
 	const float DISTANCE_TO_ENTITIES 	= 1.0;
@@ -15,6 +15,16 @@ class VicinityContainer: CollapsibleContainer
 		m_VicinityIconsContainer = new VicinitySlotsContainer( this );
 		m_Body.Insert( m_VicinityIconsContainer );
 		m_VicinityIconsContainer.GetRootWidget().SetColor(166 << 24 | 120 << 16 | 120 << 8 | 120);
+		
+		#ifndef PLATFORM_CONSOLE
+		LeftArea leftArea = LeftArea.Cast(GetParent());
+		if (leftArea)
+		{
+			leftArea.GetSlotsHeader().AddChild(GetHeader().GetRootWidget());
+			leftArea.GetSlotsArea().AddChild(m_VicinityIconsContainer.GetRootWidget());
+		}
+		#endif
+		
 		m_MainWidget = m_RootWidget.FindAnyWidget( "body" );
 		WidgetEventHandler.GetInstance().RegisterOnChildAdd( m_MainWidget, this, "OnChildAdd" );
 		WidgetEventHandler.GetInstance().RegisterOnChildRemove( m_MainWidget, this, "OnChildRemove" );
@@ -114,6 +124,14 @@ class VicinityContainer: CollapsibleContainer
 			ColorManager.GetInstance().SetColor( w, ColorManager.GREEN_COLOR );
 			ItemManager.GetInstance().HideDropzones();
 			ItemManager.GetInstance().GetLeftDropzone().SetAlpha( 1 );
+			
+			#ifndef PLATFORM_CONSOLE
+			bool ignorePointer = ItemManager.GetInstance().GetLeftSlotsScroller().GetFlags() & WidgetFlags.IGNOREPOINTER;
+			if (!ignorePointer)
+			{
+				ItemManager.GetInstance().GetLeftSlotsScroller().SetFlags(WidgetFlags.IGNOREPOINTER);
+			}
+			#endif
 		}
 		else
 		{
@@ -312,7 +330,7 @@ class VicinityContainer: CollapsibleContainer
 		
 		EntityAI eai;
 		vector pos = player.GetPosition();
-		ref array<EntityAI> objects;
+		array<EntityAI> objects;
 		
 		VicinityItemManager.GetInstance().Update( player.GetDeltaT() );
 		objects = VicinityItemManager.GetInstance().GetVicinityItems();
@@ -362,7 +380,7 @@ class VicinityContainer: CollapsibleContainer
 		}
 		
 		//MW HOTFIX - old containers must be removed before new one are added (part of initialize are refreshed whole structure - need proper fix to avoid it)
-		ref map<EntityAI, ref Container> new_showed_items = new ref map<EntityAI, ref Container>;
+		map<EntityAI, ref Container> new_showed_items = new map<EntityAI, ref Container>;
 		Container con;
 		
 		for ( i = 0; i < showable_items.Count(); i++ )
@@ -401,9 +419,9 @@ class VicinityContainer: CollapsibleContainer
 		accessInventory |= FreeDebugCamera.GetInstance() && FreeDebugCamera.GetInstance().IsActive();
 
 
-		//ref map<EntityAI, ref Container> new_showed_items = new ref map<EntityAI, ref Container>;
+		//map<EntityAI, ref Container> new_showed_items = new map<EntityAI, ref Container>;
 		new_showed_items.Clear();
-		ref map<int, ref Container> showed_items_IDs = new ref map<int, ref Container>;
+		map<int, ref Container> showed_items_IDs = new map<int, ref Container>;
 		for ( i = 0; i < showable_items.Count(); i++ )
 		{
 			EntityAI entity = showable_items.Get( i );
@@ -530,7 +548,7 @@ class VicinityContainer: CollapsibleContainer
 			}
 		}
 		
-		ref map<CargoBase, ref Container> new_showed_cargos = new ref map<CargoBase, ref Container>;
+		map<CargoBase, ref Container> new_showed_cargos = new map<CargoBase, ref Container>;
 		auto cargoes = VicinityItemManager.GetInstance().GetVicinityCargos();
 		for ( i = 0; i < cargoes.Count(); i++ )
 		{
@@ -681,21 +699,5 @@ class VicinityContainer: CollapsibleContainer
 			}
 			ItemManager.GetInstance().SetWidgetDraggable(cont.GetHeader().GetMainWidget(),draggable);
 		}
-	}
-	
-	override bool SplitItem()
-	{
-		if ( CanSplit() )
-		{
-			ItemBase item = ItemBase.Cast(GetFocusedItem());
-			if (item)
-			{
-				if (item.HasQuantity() && item.CanBeSplit())
-				{
-					item.OnRightClick();
-				}
-			}
-		}
-		return false;
 	}
 }

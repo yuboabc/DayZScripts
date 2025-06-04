@@ -60,10 +60,7 @@ class ItemBase extends InventoryItem
 	int 	m_QuickBarBonus;
 	bool	m_IsBeingPlaced;
 	bool	m_IsHologram;
-	bool	m_IsPlaceSound;
-	bool	m_IsDeploySound;
 	bool	m_IsTakeable;
-	bool	m_IsSoundSynchRemote;
 	bool 	m_ThrowItemOnDrop;
 	bool 	m_ItemBeingDroppedPhys;
 	bool    m_CanBeMovedOverride;
@@ -75,8 +72,6 @@ class ItemBase extends InventoryItem
 	bool	m_HasQuantityBar;
 	protected bool m_CanBeDigged;
 	protected bool m_IsResultOfSplit //! distinguish if item has been created as new or it came from splitting (server only flag)
-	
-	protected EffectSound m_DeployLoopSoundEx;
 	
 	string	m_SoundAttType;
 	// items color variables
@@ -132,9 +127,11 @@ class ItemBase extends InventoryItem
 	protected ref EffectSound 	m_LockingSound;
 	protected string 			m_LockSoundSet;
 	
-	protected EffectSound 		m_SoundPlace;
-	protected EffectSound 		m_SoundDeploy;
-	protected EffectSound 		m_SoundDeployFinish;
+	// ItemSoundHandler 
+	protected const int ITEM_SOUNDS_MAX = 63;	// optimize network synch  
+	protected int m_SoundSyncPlay;				// id for sound to play
+	protected int m_SoundSyncStop;				// id for sound to stop
+	private ref ItemSoundHandler m_ItemSoundHandler;
 	
 	//temperature
 	private float 				m_TemperaturePerQuantityWeight;
@@ -221,10 +218,7 @@ class ItemBase extends InventoryItem
 			m_VarLiquidType = GetLiquidTypeInit();
 		m_IsBeingPlaced = false;
 		m_IsHologram = false;
-		m_IsPlaceSound = false;
-		m_IsDeploySound = false;
 		m_IsTakeable = true;
-		m_IsSoundSynchRemote = false;
 		m_CanBeMovedOverride = false;
 		m_HeatIsolation = GetHeatIsolationInit();
 		m_ItemModelLength = GetItemModelLength();
@@ -267,10 +261,11 @@ class ItemBase extends InventoryItem
 		RegisterNetSyncVariableBool("m_IsTakeable");
 		RegisterNetSyncVariableBool("m_IsHologram");
 		
-		if (UsesGlobalDeploy())
+		InitItemSounds();		
+		if (m_ItemSoundHandler)
 		{
-			RegisterNetSyncVariableBool("m_IsSoundSynchRemote");
-			RegisterNetSyncVariableBool("m_IsDeploySound");
+			RegisterNetSyncVariableInt("m_SoundSyncPlay", 0, ITEM_SOUNDS_MAX);
+			RegisterNetSyncVariableInt("m_SoundSyncStop", 0, ITEM_SOUNDS_MAX);
 		}
 		
 		m_LockSoundSet = ConfigGetString("lockSoundSet");
@@ -279,12 +274,6 @@ class ItemBase extends InventoryItem
 		if (ConfigIsExisting("temperaturePerQuantityWeight"))
 			m_TemperaturePerQuantityWeight = ConfigGetFloat("temperaturePerQuantityWeight");
 			
-	}
-	
-	// allows for checking whether or not we can safely register net sync variables without causing VMEs for duplicate registration
-	protected bool UsesGlobalDeploy()
-	{
-		return false;
 	}
 	
 	override int GetQuickBarBonus()
@@ -750,11 +739,6 @@ class ItemBase extends InventoryItem
 	// -------------------------------------------------------------------------
 	void ~ItemBase()
 	{
-		#ifndef SERVER
-		if (m_DeployLoopSoundEx)
-			m_DeployLoopSoundEx.SoundStop();
-		#endif
-		
 		if (GetGame() && GetGame().GetPlayer() && (!GetGame().IsDedicatedServer()))
 		{
 			PlayerBase player = PlayerBase.Cast(GetGame().GetPlayer());
@@ -1326,6 +1310,11 @@ class ItemBase extends InventoryItem
 				}
 			}
 		}
+		
+		if (old_owner)
+			old_owner.OnChildItemRemoved(this);
+		if (new_owner)
+			new_owner.OnChildItemReceived(this);
 	}
 
 	// -------------------------------------------------------------------------------
@@ -1595,9 +1584,29 @@ class ItemBase extends InventoryItem
 		
 		return false;
 	}
+
+	protected bool ShouldSplitQuantity(float quantity)
+	{
+		// don't call 'CanBeSplit' here, too strict and will introduce a freeze-crash when dismantling fence with a fireplace nearby
+		if (!IsSplitable())
+			return false;
+
+		// nothing to split?
+		if (GetQuantity() <= 1)
+			return false;
+
+		// check if we should re-use the item instead of creating a new copy?
+		// implicit cast to int, if 'IsSplitable' returns true, these values are assumed ints
+		int delta = GetQuantity() - quantity;
+		if (delta == 0)
+			return false;
+
+		// valid to split
+		return true;
+	}
 	
 	override void SplitIntoStackMaxClient(EntityAI destination_entity, int slot_id )
-	{
+	{		
 		if (GetGame().IsClient())
 		{
 			if (ScriptInputUserData.CanStoreInputUserData())
@@ -1620,9 +1629,9 @@ class ItemBase extends InventoryItem
 	}
 
 	void SplitIntoStackMax(EntityAI destination_entity, int slot_id, PlayerBase player)
-	{
+	{		
 		float split_quantity_new;
-		ref ItemBase new_item;
+		ItemBase new_item;
 		float quantity = GetQuantity();
 		float stack_max = GetTargetQuantityMax(slot_id);
 		InventoryLocation loc = new InventoryLocation;
@@ -1634,13 +1643,16 @@ class ItemBase extends InventoryItem
 			else
 				split_quantity_new = GetQuantity();
 
-			new_item = ItemBase.Cast(destination_entity.GetInventory().CreateAttachmentEx(this.GetType(), slot_id));
-			if (new_item)
+			if (ShouldSplitQuantity(split_quantity_new))
 			{
-				new_item.SetResultOfSplit(true);
-				MiscGameplayFunctions.TransferItemProperties(this, new_item);
-				AddQuantity(-split_quantity_new);
-				new_item.SetQuantity(split_quantity_new);
+				new_item = ItemBase.Cast(destination_entity.GetInventory().CreateAttachmentEx(this.GetType(), slot_id));
+				if (new_item)
+				{
+					new_item.SetResultOfSplit(true);
+					MiscGameplayFunctions.TransferItemProperties(this, new_item);
+					AddQuantity(-split_quantity_new, false, true);
+					new_item.SetQuantity(split_quantity_new, false, true);
+				}
 			}
 		}
 		else if (destination_entity && slot_id == -1)
@@ -1650,18 +1662,21 @@ class ItemBase extends InventoryItem
 			else
 				split_quantity_new = quantity;
 			
-			if (destination_entity.GetInventory().FindFreeLocationFor(this, FindInventoryLocationType.ANY, loc))
+			if (ShouldSplitQuantity(split_quantity_new))
 			{
-				Object o = destination_entity.GetInventory().LocationCreateEntity(loc, GetType(), ECE_IN_INVENTORY, RF_DEFAULT);
-				new_item = ItemBase.Cast(o);
-			}
+				if (destination_entity.GetInventory().FindFreeLocationFor(this, FindInventoryLocationType.ANY, loc))
+				{
+					Object o = destination_entity.GetInventory().LocationCreateEntity(loc, GetType(), ECE_IN_INVENTORY, RF_DEFAULT);
+					new_item = ItemBase.Cast(o);
+				}
 
-			if (new_item)
-			{
-				new_item.SetResultOfSplit(true);		
-				MiscGameplayFunctions.TransferItemProperties(this, new_item);
-				AddQuantity(-split_quantity_new);
-				new_item.SetQuantity(split_quantity_new);
+				if (new_item)
+				{
+					new_item.SetResultOfSplit(true);		
+					MiscGameplayFunctions.TransferItemProperties(this, new_item);
+					AddQuantity(-split_quantity_new, false, true);
+					new_item.SetQuantity(split_quantity_new, false, true);
+				}
 			}
 		}
 		else
@@ -1682,24 +1697,27 @@ class ItemBase extends InventoryItem
 					return;
 				}
 				
-				new_item = ItemBase.Cast(GetGame().CreateObjectEx(GetType(), player.GetWorldPosition(), ECE_PLACE_ON_SURFACE));
-				
-				if (new_item)
+				if (ShouldSplitQuantity(split_quantity_new))
 				{
-					new_item.SetResultOfSplit(true);
-					MiscGameplayFunctions.TransferItemProperties(this, new_item);
-					SetQuantity(split_quantity_new);
-					new_item.SetQuantity(stack_max);
-					new_item.PlaceOnSurface();
+					new_item = ItemBase.Cast(GetGame().CreateObjectEx(GetType(), player.GetWorldPosition(), ECE_PLACE_ON_SURFACE));
+					
+					if (new_item)
+					{
+						new_item.SetResultOfSplit(true);
+						MiscGameplayFunctions.TransferItemProperties(this, new_item);
+						SetQuantity(split_quantity_new, false, true);
+						new_item.SetQuantity(stack_max, false, true);
+						new_item.PlaceOnSurface();
+					}
 				}
 			}
 		}
 	}
 	
 	override void SplitIntoStackMaxEx(EntityAI destination_entity, int slot_id)
-	{
+	{		
 		float split_quantity_new;
-		ref ItemBase new_item;
+		ItemBase new_item;
 		float quantity = GetQuantity();
 		float stack_max = GetTargetQuantityMax(slot_id);
 		InventoryLocation loc = new InventoryLocation;
@@ -1711,13 +1729,16 @@ class ItemBase extends InventoryItem
 			else
 				split_quantity_new = GetQuantity();
 
-			new_item = ItemBase.Cast(destination_entity.GetInventory().CreateAttachmentEx(this.GetType(), slot_id));
-			if (new_item)
+			if (ShouldSplitQuantity(split_quantity_new))
 			{
-				new_item.SetResultOfSplit(true);
-				MiscGameplayFunctions.TransferItemProperties(this, new_item);
-				AddQuantity(-split_quantity_new);
-				new_item.SetQuantity(split_quantity_new);
+				new_item = ItemBase.Cast(destination_entity.GetInventory().CreateAttachmentEx(this.GetType(), slot_id));
+				if (new_item)
+				{
+					new_item.SetResultOfSplit(true);
+					MiscGameplayFunctions.TransferItemProperties(this, new_item);
+					AddQuantity(-split_quantity_new, false, true);
+					new_item.SetQuantity(split_quantity_new, false, true);
+				}
 			}
 		}
 		else if (destination_entity && slot_id == -1)
@@ -1727,18 +1748,21 @@ class ItemBase extends InventoryItem
 			else
 				split_quantity_new = quantity;
 			
-			if (destination_entity.GetInventory().FindFreeLocationFor(this, FindInventoryLocationType.ANY, loc))
+			if (ShouldSplitQuantity(split_quantity_new))
 			{
-				Object o = destination_entity.GetInventory().LocationCreateEntity(loc, GetType(), ECE_IN_INVENTORY, RF_DEFAULT);
-				new_item = ItemBase.Cast(o);
-			}
+				if (destination_entity.GetInventory().FindFreeLocationFor(this, FindInventoryLocationType.ANY, loc))
+				{
+					Object o = destination_entity.GetInventory().LocationCreateEntity(loc, GetType(), ECE_IN_INVENTORY, RF_DEFAULT);
+					new_item = ItemBase.Cast(o);
+				}
 
-			if (new_item)
-			{
-				new_item.SetResultOfSplit(true);		
-				MiscGameplayFunctions.TransferItemProperties(this, new_item);
-				AddQuantity(-split_quantity_new);
-				new_item.SetQuantity(split_quantity_new);
+				if (new_item)
+				{
+					new_item.SetResultOfSplit(true);		
+					MiscGameplayFunctions.TransferItemProperties(this, new_item);
+					AddQuantity(-split_quantity_new, false, true);
+					new_item.SetQuantity(split_quantity_new, false, true);
+				}
 			}
 		}
 		else
@@ -1750,15 +1774,18 @@ class ItemBase extends InventoryItem
 					split_quantity_new = GetQuantity() - stack_max;
 				}
 				
-				new_item = ItemBase.Cast(GetGame().CreateObjectEx(GetType(),GetWorldPosition(), ECE_PLACE_ON_SURFACE));
-				
-				if (new_item)
+				if (ShouldSplitQuantity(split_quantity_new))
 				{
-					new_item.SetResultOfSplit(true);
-					MiscGameplayFunctions.TransferItemProperties(this, new_item);
-					SetQuantity(split_quantity_new);
-					new_item.SetQuantity(stack_max);
-					new_item.PlaceOnSurface();
+					new_item = ItemBase.Cast(GetGame().CreateObjectEx(GetType(),GetWorldPosition(), ECE_PLACE_ON_SURFACE));
+					
+					if (new_item)
+					{
+						new_item.SetResultOfSplit(true);
+						MiscGameplayFunctions.TransferItemProperties(this, new_item);
+						SetQuantity(split_quantity_new, false, true);
+						new_item.SetQuantity(stack_max, false, true);
+						new_item.PlaceOnSurface();
+					}
 				}
 			}
 		}
@@ -1816,7 +1843,7 @@ class ItemBase extends InventoryItem
 	}
 	
 	ItemBase SplitIntoStackMaxToInventoryLocationEx(notnull InventoryLocation dst)
-	{
+	{		
 		float quantity = GetQuantity();
 		float split_quantity_new;
 		ItemBase new_item;
@@ -1829,28 +1856,31 @@ class ItemBase extends InventoryItem
 				split_quantity_new = stack_max;
 			else
 				split_quantity_new = quantity;
-			
-			new_item = ItemBase.Cast(GameInventory.LocationCreateEntity(dst, this.GetType(), ECE_IN_INVENTORY, RF_DEFAULT));
-			
-			if (new_item)
+
+			if (ShouldSplitQuantity(split_quantity_new))
 			{
-				new_item.SetResultOfSplit(true);
-				MiscGameplayFunctions.TransferItemProperties(this,new_item);
-				AddQuantity(-split_quantity_new);
-				new_item.SetQuantity(split_quantity_new);
+				new_item = ItemBase.Cast(GameInventory.LocationCreateEntity(dst, this.GetType(), ECE_IN_INVENTORY, RF_DEFAULT));
+				
+				if (new_item)
+				{
+					new_item.SetResultOfSplit(true);
+					MiscGameplayFunctions.TransferItemProperties(this,new_item);
+					AddQuantity(-split_quantity_new, false, true);
+					new_item.SetQuantity(split_quantity_new, false, true);
+				}
+				
+				return new_item;
 			}
-			
-			return new_item;
 		}
 		
 		return null;
 	}
 	
 	void SplitIntoStackMaxCargo(EntityAI destination_entity, int idx, int row, int col)
-	{
+	{		
 		float quantity = GetQuantity();
 		float split_quantity_new;
-		ref ItemBase new_item;
+		ItemBase new_item;
 		if (destination_entity)
 		{
 			float stackable = GetTargetQuantityMax();
@@ -1859,13 +1889,16 @@ class ItemBase extends InventoryItem
 			else
 				split_quantity_new = quantity;
 			
-			new_item = ItemBase.Cast(destination_entity.GetInventory().CreateEntityInCargoEx(this.GetType(), idx, row, col, false));
-			if (new_item)
+			if (ShouldSplitQuantity(split_quantity_new))
 			{
-				new_item.SetResultOfSplit(true);	
-				MiscGameplayFunctions.TransferItemProperties(this,new_item);
-				AddQuantity(-split_quantity_new);
-				new_item.SetQuantity(split_quantity_new);
+				new_item = ItemBase.Cast(destination_entity.GetInventory().CreateEntityInCargoEx(this.GetType(), idx, row, col, false));
+				if (new_item)
+				{
+					new_item.SetResultOfSplit(true);	
+					MiscGameplayFunctions.TransferItemProperties(this,new_item);
+					AddQuantity(-split_quantity_new, false, true);
+					new_item.SetQuantity(split_quantity_new, false, true);
+				}
 			}
 		}
 	}
@@ -1895,7 +1928,7 @@ class ItemBase extends InventoryItem
 	}
 
 	void SplitIntoStackMaxHands(PlayerBase player)
-	{
+	{		
 		float quantity = GetQuantity();
 		float split_quantity_new;
 		ref ItemBase new_item;
@@ -1907,26 +1940,29 @@ class ItemBase extends InventoryItem
 			else
 				split_quantity_new = quantity;
 			
-			EntityAI in_hands = player.GetHumanInventory().CreateInHands(this.GetType());
-			new_item = ItemBase.Cast(in_hands);
-			if (new_item)
-			{		
-				new_item.SetResultOfSplit(true);
-				MiscGameplayFunctions.TransferItemProperties(this,new_item);
-				AddQuantity(-split_quantity_new);
-				new_item.SetQuantity(split_quantity_new);
+			if (ShouldSplitQuantity(split_quantity_new))
+			{
+				EntityAI in_hands = player.GetHumanInventory().CreateInHands(this.GetType());
+				new_item = ItemBase.Cast(in_hands);
+				if (new_item)
+				{		
+					new_item.SetResultOfSplit(true);
+					MiscGameplayFunctions.TransferItemProperties(this,new_item);
+					AddQuantity(-split_quantity_new, false, true);
+					new_item.SetQuantity(split_quantity_new, false, true);
+				}
 			}
 		}
 	}
 	
 	void SplitItemToInventoryLocation(notnull InventoryLocation dst)
-	{
-		if (!CanBeSplit())
-			return;
-		
+	{		
 		float quantity = GetQuantity();
 		float split_quantity_new = Math.Floor(quantity * 0.5);
 		
+		if (!ShouldSplitQuantity(split_quantity_new))
+			return;
+
 		ItemBase new_item = ItemBase.Cast(GameInventory.LocationCreateEntity(dst, GetType(), ECE_IN_INVENTORY, RF_DEFAULT));
 
 		if (new_item)
@@ -1941,26 +1977,24 @@ class ItemBase extends InventoryItem
 			
 			if (dst.IsValid() && dst.GetType() == InventoryLocationType.ATTACHMENT && split_quantity_new > 1)
 			{
-				AddQuantity(-1);
-				new_item.SetQuantity(1);
+				AddQuantity(-1, false, true);
+				new_item.SetQuantity(1, false, true);
 			}
 			else
 			{
-				AddQuantity(-split_quantity_new);
-				new_item.SetQuantity(split_quantity_new);				
+				AddQuantity(-split_quantity_new, false, true);
+				new_item.SetQuantity(split_quantity_new, false, true);				
 			}
 		}	
 	}
 	
 	void SplitItem(PlayerBase player)
 	{
-		if (!CanBeSplit())
-		{
-			return;
-		}
-		
 		float quantity = GetQuantity();
 		float split_quantity_new = Math.Floor(quantity / 2);
+		
+		if (!ShouldSplitQuantity(split_quantity_new))
+			return;
 		
 		InventoryLocation invloc = new InventoryLocation;
 		bool found = player.GetInventory().FindFirstFreeLocationForNewEntity(GetType(), FindInventoryLocationType.ATTACHMENT, invloc);
@@ -1976,13 +2010,13 @@ class ItemBase extends InventoryItem
 			}
 			if (found && invloc.IsValid() && invloc.GetType() == InventoryLocationType.ATTACHMENT && split_quantity_new > 1)
 			{
-				AddQuantity(-1);
-				new_item.SetQuantity(1);
+				AddQuantity(-1, false, true);
+				new_item.SetQuantity(1, false, true);
 			}
-			else
+			else if (split_quantity_new > 1)
 			{
-				AddQuantity(-split_quantity_new);
-				new_item.SetQuantity(split_quantity_new);
+				AddQuantity(-split_quantity_new, false, true);
+				new_item.SetQuantity(split_quantity_new, false, true);
 			}
 		}
 	}
@@ -2071,38 +2105,40 @@ class ItemBase extends InventoryItem
 			{
 				if (ScriptInputUserData.CanStoreInputUserData())
 				{
-					vector m4[4];
-					PlayerBase player = PlayerBase.Cast(GetGame().GetPlayer());
-					
 					EntityAI root = GetHierarchyRoot();
-					
+					Man playerOwner = GetHierarchyRootPlayer();
 					InventoryLocation dst = new InventoryLocation;
-					if (!player.GetInventory().FindFirstFreeLocationForNewEntity(GetType(), FindInventoryLocationType.CARGO, dst))
-					{						
-						if (root)
-						{
-							root.GetTransform(m4);
-							dst.SetGround(this, m4);
-						}
-						else
-							GetInventory().GetCurrentInventoryLocation(dst);
+					
+					// If we have no hierarchy root player and the root is the same as this item the source item is in the vicinity so we want to create the new split item there also					
+					if (!playerOwner && root && root == this)
+					{
+						SetInventoryLocationToVicinityOrCurrent(root, dst);
 					}
 					else
 					{
-						dst.SetCargo(dst.GetParent(), this, dst.GetIdx(), dst.GetRow(), dst.GetCol(), dst.GetFlip());
-						if (GetGame().GetPlayer().GetInventory().HasInventoryReservation(null, dst))
+						// Check if we can place the new split item in the same parent where the source item is placed in or otherwise drop it in vicinity
+						GetInventory().GetCurrentInventoryLocation(dst);
+						if (!dst.GetParent() || dst.GetParent() && !dst.GetParent().GetInventory().FindFreeLocationFor(this, FindInventoryLocationType.CARGO, dst))
 						{
-							if (root)
+							PlayerBase player = PlayerBase.Cast(GetGame().GetPlayer());
+							if (!player.GetInventory().FindFreeLocationFor(this, FindInventoryLocationType.CARGO, dst) || !playerOwner)
 							{
-								root.GetTransform(m4);
-								dst.SetGround(this, m4);
+								SetInventoryLocationToVicinityOrCurrent(root, dst);
 							}
 							else
-								GetInventory().GetCurrentInventoryLocation(dst);
-						}
-						else
-						{
-							GetGame().GetPlayer().GetInventory().AddInventoryReservationEx(null, dst, GameInventory.c_InventoryReservationTimeoutShortMS);
+							{
+								dst.SetCargo(dst.GetParent(), this, dst.GetIdx(), dst.GetRow(), dst.GetCol(), dst.GetFlip());
+								/*	hacky solution to check reservation of "this" item instead of null since the gamecode is checking null against null and returning reservation=true incorrectly
+									this shouldnt cause issues within this scope*/
+								if (GetGame().GetPlayer().GetInventory().HasInventoryReservation(this, dst))
+								{
+									SetInventoryLocationToVicinityOrCurrent(root, dst);
+								}
+								else
+								{
+									GetGame().GetPlayer().GetInventory().AddInventoryReservationEx(null, dst, GameInventory.c_InventoryReservationTimeoutShortMS);
+								}
+							}
 						}
 					}
 					
@@ -2120,6 +2156,20 @@ class ItemBase extends InventoryItem
 			{
 				SplitItem(PlayerBase.Cast(GetGame().GetPlayer()));
 			}
+		}
+	}
+		
+	protected void SetInventoryLocationToVicinityOrCurrent(EntityAI root, inout InventoryLocation dst)
+	{
+		if (root)
+		{
+			vector m4[4];
+			root.GetTransform(m4);
+			dst.SetGround(this, m4);
+		}
+		else
+		{
+			GetInventory().GetCurrentInventoryLocation(dst);
 		}
 	}
 	
@@ -2293,35 +2343,52 @@ class ItemBase extends InventoryItem
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.REMOVE_QUANTITY, "Quantity -20%", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SET_QUANTITY_0, "Set Quantity 0", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SET_MAX_QUANTITY, "Set Quantity Max", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 		
 		//health
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.ADD_HEALTH, "Health +20%", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.REMOVE_HEALTH, "Health -20%", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.DESTROY_HEALTH, "Health 0", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 		//temperature
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.ADD_TEMPERATURE, "Temperature +20", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.REMOVE_TEMPERATURE, "Temperature -20", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.FLIP_FROZEN, "Toggle Frozen", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 		
 		//wet
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.ADD_WETNESS, "Wetness +20", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.REMOVE_WETNESS, "Wetness -20", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 
 		//liquidtype
 		if (IsLiquidContainer())
 		{
 			outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.LIQUIDTYPE_UP, "LiquidType Next", FadeColors.LIGHT_GREY));
 			outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.LIQUIDTYPE_DOWN, "LiquidType Previous", FadeColors.LIGHT_GREY));
+			outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 		}
 		
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.MAKE_SPECIAL, "Make Special", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
+
 		// watch
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.WATCH_ITEM, "Watch (CTRL-Z)", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.WATCH_PLAYER, "Watch Player", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 		
-		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "", FadeColors.RED));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.DELETE, "Delete", FadeColors.RED));
-		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "", FadeColors.RED));
+
+		InventoryLocation loc = new InventoryLocation();
+		GetInventory().GetCurrentInventoryLocation(loc);
+		if (!loc || loc.GetType() == InventoryLocationType.GROUND)
+		{
+			if (Gizmo_IsSupported())
+				outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.GIZMO_OBJECT, "Gizmo Object", FadeColors.LIGHT_GREY));
+			outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.GIZMO_PHYSICS, "Gizmo Physics (SP Only)", FadeColors.LIGHT_GREY)); // intentionally allowed for testing physics desync
+		}
+
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 	}
 	
 	// -------------------------------------------------------------------------	
@@ -2330,6 +2397,30 @@ class ItemBase extends InventoryItem
 	override bool OnAction(int action_id, Man player, ParamsReadContext ctx)
 	{
 		super.OnAction(action_id, player, ctx);
+
+		if (GetGame().IsClient() || !GetGame().IsMultiplayer())
+		{
+			switch (action_id)
+			{
+				case EActions.GIZMO_OBJECT:
+					GetGame().GizmoSelectObject(this);
+					return true;
+				case EActions.GIZMO_PHYSICS:
+					GetGame().GizmoSelectPhysics(GetPhysics());
+					return true;
+			}
+		}
+
+		if (GetGame().IsServer())
+		{
+			switch (action_id)
+			{
+				case EActions.DELETE:
+					Delete();
+					return true;
+			}
+		}
+
 		if (action_id >= EActions.RECIPES_RANGE_START && action_id < EActions.RECIPES_RANGE_END)
 		{
 			PluginRecipesManager plugin_recipes_manager = PluginRecipesManager.Cast(GetPlugin(PluginRecipesManager));
@@ -2495,11 +2586,6 @@ class ItemBase extends InventoryItem
 				OnDebugSpawnEx(debugParams);
 			}
 			
-			else if (action_id == EActions.DELETE)
-			{
-				Delete();
-			}
-			
 		}
 
 		
@@ -2558,6 +2644,10 @@ class ItemBase extends InventoryItem
 	{
 		return false;
 	}		
+	
+	//! cooking-related effect methods
+	void RefreshAudioVisualsOnClient( CookingMethodType cooking_method, bool is_done, bool is_empty, bool is_burned );
+	void RemoveAudioVisualsOnClient();
 	
 	//----------------------------------------------------------------
 	bool CanRepair(ItemBase item_repair_kit)
@@ -3180,22 +3270,7 @@ class ItemBase extends InventoryItem
 			}
 			#endif
 		}
-		
-		if (CanPlayDeployLoopSound())
-		{
-			PlayDeployLoopSoundEx();
-		}
-		
-		if (m_DeployLoopSoundEx && !CanPlayDeployLoopSound())
-		{
-			StopDeployLoopSoundEx();
-		}
-		
-		if (IsDeploySound())
-		{
-			PlayDeploySound();
-		}
-		
+				
 		if (!dBodyIsDynamic(this) && m_WantPlayImpactSound)
 		{
 			PlayImpactSound(m_ConfigWeight, m_ImpactSpeed, m_ImpactSoundSurfaceHash);
@@ -3211,6 +3286,17 @@ class ItemBase extends InventoryItem
 		{
 			OnWetChanged(m_VarWet,m_VarWetPrev);
 			m_VarWetPrev = m_VarWet;
+		}
+		
+		if (m_SoundSyncPlay != 0)
+		{
+			m_ItemSoundHandler.PlayItemSoundClient(m_SoundSyncPlay);
+			m_SoundSyncPlay = 0;
+		}
+		if (m_SoundSyncStop != 0)
+		{
+			m_ItemSoundHandler.StopItemSoundClient(m_SoundSyncStop);
+			m_SoundSyncStop = 0;
 		}
 			
 		super.OnVariablesSynchronized();
@@ -3291,7 +3377,7 @@ class ItemBase extends InventoryItem
 	}
 	//----------------------------------------------------------------
 	//! Sets quantity in normalized 0..1 form between the item's Min a Max values as defined by item's config(for Min 0 and Max 5000, setting 0.5 will result in value 2500)
-	void SetQuantityNormalized(float value, bool destroy_config = true, bool destroy_forced = false)
+	override void SetQuantityNormalized(float value, bool destroy_config = true, bool destroy_forced = false)
 	{
 		float value_clamped = Math.Clamp(value, 0, 1);//just to make sure
 		int result = Math.Round(Math.Lerp(GetQuantityMin(), GetQuantityMax(), value_clamped));
@@ -3415,7 +3501,7 @@ class ItemBase extends InventoryItem
 				data2.SetCalcDetails("TIB2: "+super.GetWeightSpecialized(forceRecalc)+"(contents weight) + " + GetConfigWeightModifiedDebugText() +" + " + GetCompEM().GetEnergy()+"(energy) * " + ConfigGetFloat("weightPerQuantityUnit") +"(weightPerQuantityUnit)");
 			}
 			#endif
-			return super.GetWeightSpecialized(forceRecalc) + (GetCompEM().GetEnergy() * ConfigGetFloat("weightPerQuantityUnit")) + GetConfigWeightModified());
+			return super.GetWeightSpecialized(forceRecalc) + (GetCompEM().GetEnergy() * ConfigGetFloat("weightPerQuantityUnit")) + GetConfigWeightModified();
 		}
 		else//everything else
 		{
@@ -3426,7 +3512,7 @@ class ItemBase extends InventoryItem
 				data3.SetCalcDetails("TIB3: "+super.GetWeightSpecialized(forceRecalc)+"(contents weight) + " + GetConfigWeightModifiedDebugText() +" + " + GetQuantity()+"(quantity) * " + ConfigGetFloat("weightPerQuantityUnit") +"(weightPerQuantityUnit))");
 			}
 			#endif
-			return super.GetWeightSpecialized(forceRecalc) + (GetQuantity() * ConfigGetFloat("weightPerQuantityUnit")) + GetConfigWeightModified());
+			return super.GetWeightSpecialized(forceRecalc) + (GetQuantity() * ConfigGetFloat("weightPerQuantityUnit")) + GetConfigWeightModified();
 		}
 	}
 
@@ -3826,10 +3912,7 @@ class ItemBase extends InventoryItem
 		{
 			m_AdminLog.OnPlacementComplete(player, this);
 		}
-		if (GetGame().IsServer())
-		{
-			SetIsDeploySound(true);
-		}
+		
 		super.OnPlacementComplete(player, position, orientation);
 	}
 		
@@ -3864,7 +3947,7 @@ class ItemBase extends InventoryItem
 		m_AttachedAgents = 0;
 	}
 	//--------------------------------------------------------------------------
-	override void RemoveAllAgentsExcept(int agents_to_keep_mask)
+	override void RemoveAllAgentsExcept(int agent_to_keep)
 	{
 		m_AttachedAgents = m_AttachedAgents & agent_to_keep;
 	}
@@ -4294,115 +4377,79 @@ class ItemBase extends InventoryItem
 	}
 	
 	//----------------------------------------------------------------
-	//SOUNDS FOR ADVANCED PLACEMNT
+	//SOUNDS - ItemSoundHandler
 	//----------------------------------------------------------------
 	
-	void SoundSynchRemoteReset()
-	{	
-		m_IsSoundSynchRemote = false;
+	string GetPlaceSoundset();			// played when deploy starts
+	string GetLoopDeploySoundset();		// played when deploy starts and stopped when it finishes
+	string GetDeploySoundset();			// played when deploy sucessfully finishes
+	string GetLoopFoldSoundset();		// played when fold starts and stopped when it finishes
+	string GetFoldSoundset();			// played when fold sucessfully finishes
+			
+	ItemSoundHandler GetItemSoundHandler()
+	{
+		if (!m_ItemSoundHandler)
+			m_ItemSoundHandler = new ItemSoundHandler(this);
 		
-		SetSynchDirty();
+		return m_ItemSoundHandler;
 	}
 	
-	void SoundSynchRemote()
-	{	
-		m_IsSoundSynchRemote = true;
+	// override to initialize sounds
+	protected void InitItemSounds()
+	{
+		if (GetPlaceSoundset() == string.Empty && GetDeploySoundset() == string.Empty && GetLoopDeploySoundset() == string.Empty)
+			return;
+
+		ItemSoundHandler handler = GetItemSoundHandler();
+
+		if (GetPlaceSoundset() != string.Empty)
+			handler.AddSound(SoundConstants.ITEM_PLACE, GetPlaceSoundset());
+		
+		if (GetDeploySoundset() != string.Empty)
+			handler.AddSound(SoundConstants.ITEM_DEPLOY, GetDeploySoundset());
+		
+		SoundParameters params = new SoundParameters();
+		params.m_Loop = true;
+		if (GetLoopDeploySoundset() != string.Empty)
+			handler.AddSound(SoundConstants.ITEM_DEPLOY_LOOP, GetLoopDeploySoundset(), params);
+	}
+	
+	// Start sound using ItemSoundHandler
+	void StartItemSoundServer(int id)
+	{
+		if (!GetGame().IsServer())
+			return;
+		
+		m_SoundSyncPlay = id;
+		SetSynchDirty();
+		
+		GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).Remove(ClearStartItemSoundServer);	// in case one is queued already
+		GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(ClearStartItemSoundServer, 100);
+	}
+	
+	// Stop sound using ItemSoundHandler
+	void StopItemSoundServer(int id)
+	{
+		if (!GetGame().IsServer())
+			return;
+		
+		m_SoundSyncStop = id;
+		SetSynchDirty();
+		
+		GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).Remove(ClearStopItemSoundServer);	// in case one is queued already
+		GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(ClearStopItemSoundServer, 100);
+	}
+	
+	protected void ClearStartItemSoundServer()
+	{
+		m_SoundSyncPlay = 0;
+	}
+	
+	protected void ClearStopItemSoundServer()
+	{
+		m_SoundSyncStop = 0;
+	}
 				
-		SetSynchDirty();
-	}
-	
-	bool IsSoundSynchRemote()
-	{	
-		return m_IsSoundSynchRemote;
-	}
-	
-	string GetDeploySoundset();	
-	string GetPlaceSoundset();
-	string GetLoopDeploySoundset();
-	string GetDeployFinishSoundset();
-	
-	void SetIsPlaceSound(bool is_place_sound)
-	{
-		m_IsPlaceSound = is_place_sound;
-	}
-	
-	bool IsPlaceSound()
-	{
-		return m_IsPlaceSound;
-	}
-	
-	void SetIsDeploySound(bool is_deploy_sound)
-	{
-		m_IsDeploySound = is_deploy_sound;
-	}
-	
-	bool IsDeploySound()
-	{
-		return m_IsDeploySound;
-	}
-	
-	void PlayDeployLoopSoundEx()
-	{		
-		if (!GetGame().IsDedicatedServer() && !m_DeployLoopSoundEx)
-		{		
-			m_DeployLoopSoundEx = SEffectManager.PlaySound(GetLoopDeploySoundset(), GetPosition());
-			if (m_DeployLoopSoundEx)
-				m_DeployLoopSoundEx.SetAutodestroy(true);
-			else
-				Debug.Log("null m_DeployLoopSoundEx from sound set: " + GetLoopDeploySoundset());
-		}
-	}
-	
-	void StopDeployLoopSoundEx()
-	{
-		if (!GetGame().IsDedicatedServer())
-		{	
-			m_DeployLoopSoundEx.SetSoundFadeOut(0.5);
-			m_DeployLoopSoundEx.SoundStop();
-		}
-	}
-	
-	void PlayDeploySound()
-	{
-		if (!GetGame().IsDedicatedServer() && !m_SoundDeploy)
-		{
-			m_SoundDeploy = SEffectManager.PlaySound(GetDeploySoundset(), GetPosition());
-			if (m_SoundDeploy)
-				m_SoundDeploy.SetAutodestroy(true);
-			else
-				Debug.Log("null m_SoundDeploy from sound set: " + GetDeploySoundset());
-		}
-	}
-	
-	void PlayDeployFinishSound()
-	{
-		if (!GetGame().IsDedicatedServer() && !m_SoundDeployFinish)
-		{
-			m_SoundDeployFinish = SEffectManager.PlaySound(GetDeployFinishSoundset(), GetPosition());
-			if (m_SoundDeployFinish)
-				m_SoundDeployFinish.SetAutodestroy(true);
-			else
-				Debug.Log("null m_SoundDeployFinish from sound set: " + GetDeployFinishSoundset());
-		}
-	}
-	
-	void PlayPlaceSound()
-	{
-		if (!GetGame().IsDedicatedServer() && !m_SoundPlace)
-		{
-			m_SoundPlace = SEffectManager.PlaySound(GetPlaceSoundset(), GetPosition());
-			if (m_SoundPlace)
-				m_SoundPlace.SetAutodestroy(true);
-			else
-				Debug.Log("null m_SoundPlace from sound set: " + GetPlaceSoundset());
-		}
-	}
-	
-	bool CanPlayDeployLoopSound()
-	{		
-		return IsBeingPlaced() && IsSoundSynchRemote();
-	}
-	
 	//! Plays sound on item attach. Be advised, the config structure may slightly change in 1.11 update to allow for more complex use.
 	void PlayAttachSound(string slot_type)
 	{
@@ -4530,7 +4577,7 @@ class ItemBase extends InventoryItem
 		if (CanHaveTemperature() && !IsSelfAdjustingTemperature() && !GetHierarchyRoot().IsSelfAdjustingTemperature())
 		{
 			float target = g_Game.GetMission().GetWorldData().GetBaseEnvTemperatureAtObject(this);
-			if (GetTemperature() != target)
+			if (GetTemperature() != target || !IsFreezeThawProgressFinished())
 			{
 				float heatPermCoef = 1.0;
 				EntityAI ent = this;
@@ -4584,6 +4631,12 @@ class ItemBase extends InventoryItem
 	{
 		// return true used on selected items that have a wetness effect
 		return false;
+	}
+	
+	//! Items cannot be consumed if frozen by default. Override for exceptions.
+	bool CanBeConsumed(ConsumeConditionData data = null)
+	{
+		return !GetIsFrozen() && IsOpen();
 	}
 	
 	override void ProcessVariables()
@@ -4662,7 +4715,10 @@ class ItemBase extends InventoryItem
 		return super.GetTemperatureThawTime();
 	}
 	
+	//! from enviro source
 	void AffectLiquidContainerOnFill(int liquid_type, float amount);
+	//! from other liquid container source
+	void AffectLiquidContainerOnTransfer(int liquidType, float amount, float sourceLiquidTemperature);
 	
 	bool IsCargoException4x3(EntityAI item)
 	{
@@ -4769,6 +4825,31 @@ class ItemBase extends InventoryItem
 		ProcessItemWetness(delta, hasParent, hasRootAsPlayer, refParentIB);
 		ProcessItemTemperature(delta, hasParent, hasRootAsPlayer, refParentIB);
 	}
+	
+	// replaced by ItemSoundHandler
+	protected EffectSound m_SoundDeployFinish;
+	protected EffectSound m_SoundPlace;
+	protected EffectSound m_DeployLoopSoundEx;
+	protected EffectSound m_SoundDeploy;
+	bool m_IsPlaceSound;
+	bool m_IsDeploySound;
+	bool m_IsSoundSynchRemote;
+	
+	string GetDeployFinishSoundset();
+	void PlayDeploySound();
+	void PlayDeployFinishSound();
+	void PlayPlaceSound();
+	void PlayDeployLoopSoundEx();
+	void StopDeployLoopSoundEx();
+	void SoundSynchRemoteReset();
+	void SoundSynchRemote();
+	bool UsesGlobalDeploy(){return false;}
+	bool CanPlayDeployLoopSound(){return false;}
+	bool IsSoundSynchRemote(){return m_IsSoundSynchRemote;}
+	bool IsPlaceSound(){return m_IsPlaceSound;}
+	bool IsDeploySound(){return m_IsDeploySound;}
+	void SetIsPlaceSound(bool is_place_sound);
+	void SetIsDeploySound(bool is_deploy_sound);
 }
 
 EntityAI SpawnItemOnLocation(string object_name, notnull InventoryLocation loc, bool full_quantity)

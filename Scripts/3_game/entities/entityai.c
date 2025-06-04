@@ -191,6 +191,8 @@ class EntityAI extends Entity
 	protected ref ScriptInvoker		m_OnHitByInvoker;	
 	//Called when this entity is killed
 	protected ref ScriptInvoker		m_OnKilledInvoker;
+
+	private ref map<eAgents, float> m_BloodInfectionChanceCached; //! cache blood infection chance (cfgVehicles-><entity>->Skinning->BloodInfectionSettings)
 	
 	#ifdef DEVELOPER
 	float m_LastFTChangeTime;;
@@ -234,6 +236,8 @@ class EntityAI extends Entity
 		m_HiddenSelectionsData = new HiddenSelectionsData( GetType() );
 		
 		GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(DeferredInit,34);
+
+		m_BloodInfectionChanceCached = new map<eAgents, float>();
 	}
 	
 	void ~EntityAI()
@@ -496,6 +500,27 @@ class EntityAI extends Entity
 				return true;
 		return false;
 	}
+	
+	float GetSkinningBloodInfectionChance(eAgents type)
+	{
+		float value = 0.0;
+		if (m_BloodInfectionChanceCached.Find(type, value))
+			return value;
+		
+		return value;
+	}
+	
+	protected void CacheSkinningBloodInfectionChance(eAgents type)
+	{
+		string basePath = string.Format("cfgVehicles %1 Skinning BloodInfectionSettings", GetType());
+		if (g_Game.ConfigIsExisting(basePath))
+		{
+			string agentName = EnumTools.EnumToString(eAgents, type);
+			agentName.ToLower();
+			float value = g_Game.ConfigGetFloat(string.Format("%1 %2 chance", basePath, agentName));
+			m_BloodInfectionChanceCached.Set(type, value);
+		}
+	}
 	///@} Skinning
 
 	// ITEM TO ITEM FIRE DISTRIBUTION
@@ -532,6 +557,11 @@ class EntityAI extends Entity
 	}
 	
 	bool IsBasebuildingKit()
+	{
+		return false;
+	}
+	
+	bool IsCookware()
 	{
 		return false;
 	}
@@ -917,6 +947,8 @@ class EntityAI extends Entity
 	
 	
 	void OnItemLocationChanged(EntityAI old_owner, EntityAI new_owner) { }
+	void OnChildItemRemoved(InventoryItem item) { }
+	void OnChildItemReceived(InventoryItem item) { }
 	
 	void OnItemAttachmentSlotChanged (notnull InventoryLocation oldLoc, notnull InventoryLocation newLoc) {}
 	
@@ -945,6 +977,16 @@ class EntityAI extends Entity
 				OnWasAttached(newLoc.GetParent(), newLoc.GetSlot());
 			else
 				Error("EntityAI::EEItemLocationChanged - attached, but new_owner is null");
+		}
+		
+		if (oldLoc.GetType() == InventoryLocationType.HANDS)
+		{
+			Man.Cast(oldLoc.GetParent()).OnItemInHandsChanged();
+		}
+		
+		if (newLoc.GetType() == InventoryLocationType.HANDS)
+		{
+			Man.Cast(newLoc.GetParent()).OnItemInHandsChanged();
 		}
 	}
 
@@ -1382,41 +1424,7 @@ class EntityAI extends Entity
 	bool CanReceiveAttachment (EntityAI attachment, int slotId)
 	{
 		//generic occupancy check
-		EntityAI currentAtt = GetInventory().FindAttachment(slotId);
-		bool hasInternalConflict = attachment.HasInternalExclusionConflicts(slotId);
-		set<int> diff;
-		InventoryLocation curLoc = new InventoryLocation();
-		if (currentAtt) //probably a swap or same-type swap
-		{
-			diff = attachment.GetAttachmentExclusionMaskAll(slotId);
-			diff.RemoveItems(currentAtt.GetAttachmentExclusionMaskAll(slotId));
-			if (diff.Count() == 0)
-			{
-				return !hasInternalConflict;
-			}
-			else
-			{
-				return !hasInternalConflict && !IsExclusionFlagPresentRecursive(diff,slotId);
-			}
-		}
-		else if (attachment.GetInventory().GetCurrentInventoryLocation(curLoc) && curLoc.GetType() == InventoryLocationType.ATTACHMENT)
-		{
-			EntityAI rootOwner = attachment.GetHierarchyRoot();
-			if (rootOwner && rootOwner == this.GetHierarchyRoot()) //attachment within the same exclusion hierarchy context
-			{
-				diff = attachment.GetAttachmentExclusionMaskAll(slotId);
-				diff.RemoveItems(attachment.GetAttachmentExclusionMaskAll(curLoc.GetSlot()));
-				if (diff.Count() == 0)
-				{
-					return !hasInternalConflict;
-				}
-				else
-				{
-					return !hasInternalConflict && !IsExclusionFlagPresentRecursive(diff,slotId);
-				}
-			}
-		}
-		return !hasInternalConflict && !IsExclusionFlagPresentRecursive(attachment.GetAttachmentExclusionMaskAll(slotId),slotId);
+		return CheckAttachmentReceiveExclusion(attachment,slotId);
 	}
 	
 	/**@fn		CanLoadAsAttachment
@@ -1514,7 +1522,7 @@ class EntityAI extends Entity
 	bool CanReceiveItemIntoCargo(EntityAI item)
 	{
 		if (GetInventory() && GetInventory().GetCargo())
-			return GetInventory().GetCargo().CanReceiveItemIntoCargo(item));
+			return GetInventory().GetCargo().CanReceiveItemIntoCargo(item);
 		
 		return true;
 	}
@@ -1550,7 +1558,7 @@ class EntityAI extends Entity
 	bool CanSwapItemInCargo (EntityAI child_entity, EntityAI new_entity)
 	{
 		if (GetInventory() && GetInventory().GetCargo())
-			return GetInventory().GetCargo().CanSwapItemInCargo(child_entity, new_entity));
+			return GetInventory().GetCargo().CanSwapItemInCargo(child_entity, new_entity);
 		
 		return true;
 	}
@@ -1799,13 +1807,37 @@ class EntityAI extends Entity
 
 	EntityAI FindAttachmentBySlotName(string slot_name)
 	{
-		if ( GetGame() )
+		if (g_Game && GetInventory())
 		{
 			int slot_id = InventorySlots.GetSlotIdFromString(slot_name);
 			if (slot_id != InventorySlots.INVALID)
 				return GetInventory().FindAttachment(slot_id); 
 		}
 		return null;
+	}
+	
+	// Check whether attachmnent slot is reserved
+	bool IsSlotReserved(int slotID)
+	{
+		Man player = GetHierarchyRootPlayer();
+		if (!player)
+			return false;
+		
+		HumanInventory inv = player.GetHumanInventory();
+		if (!inv || inv.GetUserReservedLocationCount() == 0)
+			return false;
+		
+		int id = inv.FindFirstUserReservedLocationIndexForContainer(this);
+		InventoryLocation loc = new InventoryLocation();
+		if (id == -1)
+			return false;
+		
+		inv.GetUserReservedLocation(id, loc);
+
+		if (loc.GetSlot() != slotID)
+			return false;
+		
+		return true;		
 	}
 
 	/**@fn		IsLockedInSlot
@@ -2170,6 +2202,8 @@ class EntityAI extends Entity
 		return 0;
 	}
 	
+	void SetQuantityNormalized(float value, bool destroy_config = true, bool destroy_forced = false);
+			
 	float GetQuantityNormalized()
 	{
 		return 0;
@@ -2396,6 +2430,12 @@ class EntityAI extends Entity
 		return m_VarTemperatureMax;
 	}
 	
+	//! specifically for cooking system, to get heat source target temperatures
+	bool GetCookingTargetTemperature(out float temperature)
+	{
+		return false;
+	}
+	
 	/**
 	\brief Returns temperature change speed multiplier for this item and all its children (multiplicative interaction)
 	\note Values > 1 accelerate, values in <0,1) interval decelerate. Values < 0 should not be used here, but I'm not your mom.
@@ -2429,6 +2469,12 @@ class EntityAI extends Entity
 	float GetFreezeThawProgress()
 	{
 		return m_FreezeThawProgress;
+	}
+	
+	//! on server only
+	bool IsFreezeThawProgressFinished()
+	{
+		return m_FreezeThawProgress <= 0.0 || m_FreezeThawProgress >= 1.0;
 	}
 	
 	//! 0->1 when freezing, 1->0 when thawing
@@ -2529,6 +2575,9 @@ class EntityAI extends Entity
 		}
 		else
 		{
+			if ((progressDelta < 0 && !m_IsFrozen) || (progressDelta > 0 && m_IsFrozen))
+				progressVal = (progressDelta * GameConstants.TEMPERATURE_FREEZETHAW_ACCELERATION_COEF) / changeTime + m_FreezeThawProgress;
+			
 			SetFreezeThawProgress(Math.Clamp(progressVal,0,1));
 		}
 		
@@ -3151,6 +3200,7 @@ class EntityAI extends Entity
 		{
 			floats_out.Insert(m_VarTemperature);
 			floats_out.Insert((float)GetIsFrozen());
+			floats_out.Insert((float)GetFreezeThawProgress());
 		}
 	}
 	
@@ -3170,6 +3220,10 @@ class EntityAI extends Entity
 			
 			bool frozen = Math.Round(floats.Get(index));
 			SetFrozen(frozen);
+			floats.RemoveOrdered(index);
+			
+			float FTProgress = floats.Get(index);
+			SetFreezeThawProgress(FTProgress);
 			floats.RemoveOrdered(index);
 		}
 	}
@@ -3547,13 +3601,16 @@ class EntityAI extends Entity
 	{
 		//fix entity
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.FIX_ENTITY, "Fix Entity", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 	
 		//weight
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.GET_TOTAL_WEIGHT, "Print Weight", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.GET_TOTAL_WEIGHT_RECALC, "Print Weight Verbose", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.GET_PLAYER_WEIGHT, "Print Player Weight", FadeColors.LIGHT_GREY));
 		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.GET_PLAYER_WEIGHT_RECALC, "Print Player Weight Verbose", FadeColors.LIGHT_GREY));
+		outputList.Insert(new TSelectableActionInfoWithColor(SAT_DEBUG_ACTION, EActions.SEPARATOR, "___________________________", FadeColors.RED));
 	}
+
 	bool OnAction(int action_id, Man player, ParamsReadContext ctx)
 	{
 		if (action_id == EActions.FIX_ENTITY)
@@ -3783,7 +3840,7 @@ class EntityAI extends Entity
 			if (CanHaveTemperature() && !IsSelfAdjustingTemperature() && !GetHierarchyRoot().IsSelfAdjustingTemperature())
 			{
 				float target = g_Game.GetMission().GetWorldData().GetBaseEnvTemperatureAtObject(this);
-				if (GetTemperature() != target)
+				if (GetTemperature() != target || !IsFreezeThawProgressFinished())
 				{
 					float heatPermCoef = 1.0;
 					EntityAI ent = this;
@@ -4537,6 +4594,46 @@ class EntityAI extends Entity
 	protected void AdjustExclusionAccessPropagation(int occupiedSlot, int testedSlot, set<int> value, inout set<int> adjustedValue)
 	{
 		AdjustExclusionAccessCondition(occupiedSlot,testedSlot,value,adjustedValue);
+	}
+	
+	//! checks specifically for att. exclusion conflicts before att. receive
+	bool CheckAttachmentReceiveExclusion(EntityAI attachment, int slotId)
+	{
+		EntityAI currentAtt = GetInventory().FindAttachment(slotId);
+		bool hasInternalConflict = attachment.HasInternalExclusionConflicts(slotId);
+		set<int> diff;
+		InventoryLocation curLoc = new InventoryLocation();
+		if (currentAtt) //probably a swap or same-type swap
+		{
+			diff = attachment.GetAttachmentExclusionMaskAll(slotId);
+			diff.RemoveItems(currentAtt.GetAttachmentExclusionMaskAll(slotId));
+			if (diff.Count() == 0)
+			{
+				return !hasInternalConflict;
+			}
+			else
+			{
+				return !hasInternalConflict && !IsExclusionFlagPresentRecursive(diff,slotId);
+			}
+		}
+		else if (attachment.GetInventory().GetCurrentInventoryLocation(curLoc) && curLoc.GetType() == InventoryLocationType.ATTACHMENT)
+		{
+			EntityAI rootOwner = attachment.GetHierarchyRoot();
+			if (rootOwner && rootOwner == this.GetHierarchyRoot()) //attachment within the same exclusion hierarchy context
+			{
+				diff = attachment.GetAttachmentExclusionMaskAll(slotId);
+				diff.RemoveItems(attachment.GetAttachmentExclusionMaskAll(curLoc.GetSlot()));
+				if (diff.Count() == 0)
+				{
+					return !hasInternalConflict;
+				}
+				else
+				{
+					return !hasInternalConflict && !IsExclusionFlagPresentRecursive(diff,slotId);
+				}
+			}
+		}
+		return !hasInternalConflict && !IsExclusionFlagPresentRecursive(attachment.GetAttachmentExclusionMaskAll(slotId),slotId);
 	}
 
 	bool IsManagingArrows()

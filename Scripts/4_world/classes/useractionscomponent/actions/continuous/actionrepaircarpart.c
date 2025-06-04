@@ -8,7 +8,7 @@ class ActionRepairCarPartCB : ActionContinuousBaseCB
 {
 	override void CreateActionComponent()
 	{
-		m_ActionData.m_ActionComponent = new CAContinuousTime(UATimeSpent.BASEBUILDING_REPAIR_FAST);
+		m_ActionData.m_ActionComponent = new CAContinuousRepeat(UATimeSpent.BASEBUILDING_REPAIR_FAST);
 	}
 }
 
@@ -69,7 +69,7 @@ class ActionRepairCarPart : ActionContinuousBase
 			
 			//Check health level of door
 			int zoneHP = carDoor.GetHealthLevel("");
-			return zoneHP > GameConstants.STATE_WORN && zoneHP < GameConstants.STATE_RUINED);
+			return zoneHP > GameConstants.STATE_WORN && zoneHP < GameConstants.STATE_RUINED;
 		}
 		
 		return false;

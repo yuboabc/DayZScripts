@@ -111,7 +111,7 @@ class EmoteManager
 	EmoteCB					m_Callback;
 	HumanInputController 	m_HIC;
 	ref array<string> 		m_InterruptInputs;
-	ref array<UAInput> 		m_InterruptInputDirect;
+	ref array<UAIDWrapper> 	m_InterruptInputDirect;
 	ref InventoryLocation 	m_HandInventoryLocation;
 	ref EmoteLauncher 		m_MenuEmote;
 	bool					m_bEmoteIsRequestPending;
@@ -279,7 +279,7 @@ class EmoteManager
 		
 		if (m_ItemToBeCreated)
 		{
-			if (!m_Player.GetItemInHands() && GetGame().IsServer())
+			if (GetGame().IsServer() && m_Callback && !m_Player.GetItemInHands())
 			{
 				m_Player.GetHumanInventory().CreateInHands("SurrenderDummyItem");
 			}
@@ -305,13 +305,16 @@ class EmoteManager
 			m_DeferredEmoteExecution = CALLBACK_CMD_INVALID;
 			m_InstantCancelEmote = false;
 			m_bEmoteIsRequestPending = false;
-			SetEmoteLockState(false);
+			if (m_IsSurrendered)
+				ClearSurrenderState();
+			else
+				SetEmoteLockState(false);
 		}
 		else if (m_CancelEmote) //'soft' cancel
 		{
 			if (m_IsSurrendered)
 			{
-				EndSurrenderRequest(new SurrenderData);
+				ClearSurrenderState();
 			}
 			else if (m_Callback)
 			{
@@ -431,8 +434,8 @@ class EmoteManager
 				PlaySurrenderInOut(false);
 				return;
 			}
-			// getting out of surrender state - hard cancel
-			else if (m_IsSurrendered && (m_HIC.IsSingleUse() || m_HIC.IsContinuousUseStart() || m_HIC.IsWeaponRaised()))
+			// getting out of surrender state
+			else if (m_IsSurrendered && m_Player.GetItemInHands() && (m_HIC.IsSingleUse() || m_HIC.IsContinuousUseStart() || m_HIC.IsWeaponRaised()))
 			{
 				if (m_Player.GetItemInHands())
 					m_Player.GetItemInHands().DeleteSafe();//Note, this keeps item 'alive' until it is released by all the systems (inventory swapping etc.)
@@ -441,8 +444,7 @@ class EmoteManager
 			// fallback in case lock does not end properly
 			else if (m_IsSurrendered && (!m_Player.GetItemInHands() || (m_Player.GetItemInHands() && m_Player.GetItemInHands().GetType() != "SurrenderDummyItem" && m_EmoteLockState)))
 			{
-				m_IsSurrendered = false;
-				SetEmoteLockState(false);
+				ClearSurrenderState();
 				return;
 			}
 			//actual emote launch
@@ -472,22 +474,22 @@ class EmoteManager
 			return;
 		}
 		
-		//surrender "state" switch
+		//surrender "state" OFF switch only
 		if (m_CurrentGestureID == EmoteConstants.ID_EMOTE_SURRENDER)
 		{
-			m_IsSurrendered = !m_IsSurrendered;
-			SetEmoteLockState(m_IsSurrendered);
+			if (m_IsSurrendered && !m_Player.GetItemInHands())
+			{
+				m_IsSurrendered = false;
+			}
 		}
 		
 		m_CurrentGestureID = 0;
-		
 		m_bEmoteIsPlaying = false;
 		m_bEmoteIsRequestPending = false;
 		
 		if (m_IsSurrendered)
-		{
 			return;
-		}
+		
 		m_GestureInterruptInput = false;
 		SetEmoteLockState(false);
 
@@ -590,15 +592,17 @@ class EmoteManager
 		
 		if (CanPlayEmote(id))
 		{
+			EmoteBase emote;
+			m_NameEmoteMap.Find(id,emote);
+			
 			if (m_AdminLog)
-				m_AdminLog.LogPrint("[emote] " + Object.GetDebugName(m_Player) + " play emote id=" + id + " IH=" + Object.GetDebugName(m_Player.GetItemInHands()));
+				m_AdminLog.OnEmote(m_Player, emote);
 			
 			m_PreviousGestureID = m_CurrentGestureID;
 			m_CurrentGestureID = id;
 			if (id > 0)
 			{
-				EmoteBase emote;
-				if (m_NameEmoteMap.Find(id,emote))
+				if (emote)
 				{
 					int callback_ID;
 					int stancemask;
@@ -672,6 +676,12 @@ class EmoteManager
 		{
 			m_Player.TryHideItemInHands(false);
 		}
+	}
+	
+	void RequestCommitSuicide()
+	{
+		if (!GetGame().IsClient())
+			CommitSuicide();
 	}
 	
 	protected void CommitSuicide()
@@ -815,8 +825,8 @@ class EmoteManager
 		if (GetGame().IsMultiplayer() && GetGame().IsClient())
 		{
 			bool canProceed = true; //running callbacks in certain state can block additional actions
-			EmoteBase emoteData;
-			if (m_Callback && m_NameEmoteMap.Find(m_CurrentGestureID,emoteData))
+			EmoteBase emoteData = m_NameEmoteMap.Get(m_CurrentGestureID);
+			if (m_Callback && emoteData)
 			{
 				canProceed = emoteData.CanBeCanceledNormally(m_Callback);
 			}
@@ -916,10 +926,13 @@ class EmoteManager
 			return false;
 		}
 		
-		if (m_Player.GetCommand_Move() && m_Player.GetCommand_Move().IsOnBack() && id != EmoteConstants.ID_EMOTE_SURRENDER)
+		HumanCommandMove cm = m_Player.GetCommand_Move();
+		if (cm)
 		{
-			//Debug.Log("!CanPlayEmote | reason:  7");
-			return false;
+			if (cm.IsOnBack() && id != EmoteConstants.ID_EMOTE_SURRENDER)
+				return false;
+			if (cm.IsChangingStance())
+				return false;
 		}
 		
 		//"locks" player in surrender state
@@ -969,22 +982,36 @@ class EmoteManager
 	{
 		m_PreviousGestureID = m_CurrentGestureID;
 		m_CurrentGestureID = EmoteConstants.ID_EMOTE_SURRENDER;
+		
 		if (state)
 		{
-			if (m_Player.GetItemInHands() && !m_Player.CanDropEntity(m_Player.GetItemInHands()))
-				return;
-			
-			if (m_Player.GetItemInHands() && GetGame().IsClient())
+			ItemBase item = m_Player.GetItemInHands();
+			if (item)
 			{
+				if (!m_Player.CanDropEntity(item))
+					return;
+				
 				if (m_Player.GetInventory().HasInventoryReservation(null, m_HandInventoryLocation))
 					m_Player.GetInventory().ClearInventoryReservationEx(null, m_HandInventoryLocation);
-				m_Player.PhysicalPredictiveDropItem(m_Player.GetItemInHands());
+				
+				if (GetGame().IsMultiplayer())
+				{
+					if (GetGame().IsServer())
+						m_Player.ServerDropEntity(item);
+				}
+				else
+				{
+					m_Player.PhysicalPredictiveDropItem(item); //SP only
+				}
 			}
 			
 			CreateEmoteCallback(EmoteCB,DayZPlayerConstants.CMD_GESTUREFB_SURRENDERIN,DayZPlayerConstants.STANCEMASK_ALL,true);
 			
 			if (m_Callback)
+			{
 				m_Callback.RegisterAnimationEvent("ActionExec", UA_ANIM_EVENT);
+				m_IsSurrendered = true; //sets state immediately on anim start
+			}
 		}
 		else
 		{
@@ -1008,6 +1035,9 @@ class EmoteManager
 			m_Player.SetInventorySoftLock(state);
 			m_InventoryAccessLocked = state;
 		}
+		
+		if (GetGame().IsClient() && m_InventoryAccessLocked && GetGame().GetUIManager().FindMenu(MENU_INVENTORY))
+			m_Player.CloseInventoryMenu();
 		
 		//Movement lock in fullbody anims
 		if (state && m_Callback && m_Callback.m_IsFullbody)
@@ -1055,17 +1085,44 @@ class EmoteManager
 		}
 	}
 	
-	//! directly force-ends surrender state from outside of normal flow
+	//! directly force-ends surrender state AND requests hard cancel
 	void EndSurrenderRequest(SurrenderData data = null)
 	{
 		if (m_IsSurrendered && data)
 		{
-			if (m_Player.GetItemInHands())
-				m_Player.GetItemInHands().DeleteSafe();//Note, this keeps item 'alive' until it is released by all the systems (inventory swapping etc.)
-			
+			PostSurrenderRequestServer();
+			data.End();
+		}
+	}
+	
+	//! clears surrender state only
+	protected void ClearSurrenderState()
+	{
+		if (m_IsSurrendered)
+		{
+			SurrenderDummyItem dummyItem = SurrenderDummyItem.Cast(m_Player.GetItemInHands());
+			if (dummyItem)
+				dummyItem.DeleteSafe();
 			m_IsSurrendered = false;
 			SetEmoteLockState(IsEmotePlaying());
-			data.End();
+		}
+	}
+	
+	void ForceSurrenderState(bool state)
+	{
+		m_IsSurrendered = state;
+		SetEmoteLockState(IsEmotePlaying());
+	}
+	
+	//! server only
+	protected void PostSurrenderRequestServer()
+	{
+		if ((GetGame().IsMultiplayer() && GetGame().IsServer()) || !GetGame().IsMultiplayer())
+		{
+			ScriptJunctureData pCtx = new ScriptJunctureData;
+			pCtx.Write(CALLBACK_CMD_INSTACANCEL);
+			pCtx.Write(EmoteLauncher.FORCE_ALL);
+			m_Player.SendSyncJuncture(DayZPlayerSyncJunctures.SJ_GESTURE_REQUEST, pCtx);
 		}
 	}
 	
@@ -1083,12 +1140,12 @@ class EmoteManager
 		//init pass
 		if (!m_InterruptInputDirect)
 		{
-			m_InterruptInputDirect = new array<UAInput>;
+			m_InterruptInputDirect = new array<UAIDWrapper>;
 			m_InterruptInputsCount = m_InterruptInputs.Count();
 			
 			for (int i = 0; i < m_InterruptInputsCount; i++)
 			{
-				m_InterruptInputDirect.Insert(GetUApi().GetInputByName(m_InterruptInputs[i]));
+				m_InterruptInputDirect.Insert(GetUApi().GetInputByName(m_InterruptInputs[i]).GetPersistentWrapper());
 			}
 		}
 		
@@ -1098,7 +1155,7 @@ class EmoteManager
 		
 		for (int idx = 0; idx < m_InterruptInputsCount; idx++)
 		{
-			if (m_InterruptInputDirect[idx].LocalPress())
+			if (m_InterruptInputDirect[idx].InputP().LocalPress())
 			{
 				return true;
 			}

@@ -3,6 +3,11 @@ class BuildingWithFireplace : BuildingSuper
 	void BuildingWithFireplace()
 	{
 	}
+	
+	string GetFireplaceType(int firePointIndex)
+	{
+		return "FireplaceIndoor";
+	}
 };
 
 //Moved from bliss folder
@@ -24,6 +29,9 @@ class Land_Ruin_HouseSmall1_NoIvy		: BuildingWithFireplace {};
 class Land_Ruin_HouseSmall2				: BuildingWithFireplace {};
 class Land_Ruin_HouseSmall2_NoIvy		: BuildingWithFireplace {};
 class Land_House_1W13_Dam				: BuildingWithFireplace {};
+
+//Ruins
+class Land_Ruin_Chimney					: BuildingWithFireplace {};
 
 //Sakhal
 class Land_Tenement_Small_Brick			: BuildingWithFireplace {};

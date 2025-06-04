@@ -84,8 +84,7 @@ class WeaponManager
 		if( m_player.IsLiftWeapon() || !m_player.IsRaised() || wpn.IsDamageDestroyed() || m_player.GetDayZPlayerInventory().IsProcessing() || !m_player.IsWeaponRaiseCompleted() || m_player.IsFighting() ) 
 			return false;
 		
-		return true;
-		
+		return !wpn.IsCoolDown();	
 	}
 	
 	
@@ -221,7 +220,64 @@ class WeaponManager
 		for (int i = 0; i < wpn.GetMuzzleCount(); i++)
 		{
 			if (wpn.CanChamberBullet(i, mag))
+			{
 				return true;
+			}
+		}
+		
+		return false;
+	}
+//---------------------------------------------------------------------------
+	bool CanLoadMultipleBullet(Weapon_Base wpn, Magazine mag, bool reservationCheck = true)
+	{
+		if (!wpn || !mag)
+			return false;
+		
+		if (m_player.GetHumanInventory().GetEntityInHands() != wpn)
+			return false;
+		
+		if (mag.IsDamageDestroyed() || wpn.IsDamageDestroyed())
+			return false;
+		
+		if (wpn.IsJammed())
+			return false;
+	
+		if (m_player.IsItemsToDelete())
+			return false;
+		
+		if (reservationCheck && (m_player.GetInventory().HasInventoryReservation(wpn, null) || m_player.GetInventory().HasInventoryReservation(mag, null)))
+			return false;
+		
+		bool found = false;
+		bool fireout = false;
+		for (int i = 0; i < wpn.GetMuzzleCount(); i++)
+		{
+			if (fireout)
+				return true;
+			
+			if (wpn.CanChamberBullet(i, mag) )
+			{
+				if (found)
+				{
+					return true;
+				}
+					
+				if (wpn.HasInternalMagazine(i))
+				{
+					if ((wpn.GetInternalMagazineCartridgeCount(i)) < wpn.GetInternalMagazineMaxCartridgeCount(i))
+					{
+						return true;
+					}
+				}
+				
+				if (wpn.IsChamberFiredOut(i))
+				{
+					if (i > 0)
+						return true;
+					fireout = true;
+				}
+				found = true;
+			}
 		}
 		
 		return false;
@@ -586,7 +642,7 @@ class WeaponManager
 			
 			if(m_PendingTargetMagazine)
 			{
-				GetGame().ClearJuncture(m_player, m_PendingTargetMagazine);
+				GetGame().ClearJunctureEx(m_player, m_PendingTargetMagazine);
 				m_PendingTargetMagazine = NULL;
 			}
 			m_InProgress = true;
@@ -655,7 +711,7 @@ class WeaponManager
 					if ( !det_mag || ( mag != det_mag) )
 						break;
 					
-					if( GetGame().AddInventoryJunctureEx(m_player, il.GetItem(), il, true, 10000))
+					if (GetGame().AddInventoryJunctureEx(m_player, il.GetItem(), il, true, 10000))
 						accepted = true;
 					m_PendingInventoryLocation = il;
 					m_PendingTargetMagazine = mag;
@@ -943,11 +999,11 @@ class WeaponManager
 		
 		if (!m_ControlAction)
 		{
-			if(GetGame().IsServer() && GetGame().IsMultiplayer())
+			if (GetGame().IsServer() && GetGame().IsMultiplayer())
 			{
 				if(m_PendingTargetMagazine)
 				{
-					GetGame().ClearJuncture(m_player,m_PendingTargetMagazine);
+					GetGame().ClearJunctureEx(m_player,m_PendingTargetMagazine);
 				}
 			}
 			else
@@ -1021,14 +1077,18 @@ class WeaponManager
 		for (int i = 0; i < m_SuitableMagazines.Count(); i++)
 		{
 			mag = m_SuitableMagazines[i];
-			if (!mag || mag.IsRuined() || (mag.GetHierarchyParent() && !mag.GetHierarchyParent().GetInventory().AreChildrenAccessible()))
+			if (!mag || mag.IsRuined() || (mag.GetHierarchyParent() && mag.GetHierarchyParent().IsWeapon()) )
 			{
 				m_SuitableMagazines.Remove(i);
 				i--;
 				continue;
 			}
-			if (mag.GetAmmoCount() > 0)
-				return mag;
+			
+			if(!mag.GetHierarchyParent() || mag.GetHierarchyParent().GetInventory().AreChildrenAccessible())
+			{
+				if (mag.GetAmmoCount() > 0)
+					return mag;
+			}
 		}
 		
 		return null;

@@ -24,55 +24,63 @@ class ActionStartEngineBoat : ActionContinuousBase
 	}
 	
 	override bool ActionCondition(PlayerBase player, ActionTarget target, ItemBase item)
-	{	
+	{
 		HumanCommandVehicle vehCommand = player.GetCommand_Vehicle();
 		if (!vehCommand)
 			return false;
 		
-		BoatScript boat = BoatScript.Cast(vehCommand.GetTransport());
-		if (boat && !boat.EngineIsOn())
-		{
-			if (!boat.CheckOperationalState())
-				return false;
-			
-			return boat.CrewMemberIndex(player) == DayZPlayerConstants.VEHICLESEAT_DRIVER);
-		}
+		auto vehicle = BoatScript.Cast(vehCommand.GetTransport());
+		if (!vehicle || vehicle.EngineIsOn())
+			return false;
 		
-		return false;
+		return vehicle.CrewDriver() == player;
 	}
 		
 	override void OnFinishProgress(ActionData action_data)
 	{
 		HumanCommandVehicle vehCommand = action_data.m_Player.GetCommand_Vehicle();
-		if (vehCommand)
+		if (!vehCommand)
+			return;
+		
+		auto vehicle = BoatScript.Cast(vehCommand.GetTransport());
+		if (!vehicle)
+			return;
+
+		if (vehicle.GetNetworkMoveStrategy() == NetworkMoveStrategy.PHYSICS)
 		{
-			Transport trans = vehCommand.GetTransport();
-			if (trans)
+			// Only perform on clients (or robos), validation is performed in C++ with respect to scripted 'Car.OnBeforeEngineStart'
+			if (action_data.m_Player.GetInstanceType() == DayZPlayerInstanceType.INSTANCETYPE_SERVER)
 			{
-				Boat boat = Boat.Cast(trans);
-				if (boat)
-					boat.EngineStart();
+				return;
 			}
 		}
+
+		vehicle.EngineStart();
 	}
 	
-	override void OnExecuteServer(ActionData action_data)
+	override void OnExecute(ActionData action_data)
 	{
 		HumanCommandVehicle vehCommand = action_data.m_Player.GetCommand_Vehicle();
-		if (vehCommand)
-		{
-			Transport trans = vehCommand.GetTransport();
-			if (trans)
-			{
-				Boat boat = Boat.Cast(trans);
-				//if (boat)
-					//boat.OnBeforeEngineStart(); // to be added
-			}
-		}
+		if (!vehCommand)
+			return;
+		
+		auto vehicle = BoatScript.Cast(vehCommand.GetTransport());
+		if (vehicle)
+			vehicle.OnIgnition();
 	}
 		
 	override bool CanBeUsedInVehicle()
 	{
 		return true;
+	}
+	
+	override bool HasTarget()
+	{
+		return false;
+	}
+	
+	override bool UseMainItem()
+	{
+		return false;
 	}
 }

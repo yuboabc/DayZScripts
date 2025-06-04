@@ -241,12 +241,18 @@ class HandsContainer: Container
 				ItemBase item_in_hands = ItemBase.Cast( GetGame().GetPlayer().GetHumanInventory().GetEntityInHands() );
 				if ( item_in_hands )
 				{
-					if ( GetGame().GetPlayer().GetHumanInventory().CanRemoveEntityInHands() && !GetGame().GetPlayer().GetInventory().HasInventoryReservation(item_in_hands, null)  )
+					DayZPlayer player = GetGame().GetPlayer();
+					if (player && player.GetHumanInventory().CanRemoveEntityInHands() && !player.GetInventory().HasInventoryReservation(item_in_hands, null))
 					{
-						if ( GetGame().GetPlayer().PredictiveTakeEntityToInventory( FindInventoryLocationType.ATTACHMENT, item_in_hands ) )
+						bool res = player.PredictiveTakeOrSwapAttachment(item_in_hands);
+						if (!res)
 						{
-							m_MainWidget.FindAnyWidget("Cursor").Show( false );
-							m_MainWidget.FindAnyWidget("hands_preview_root").SetAlpha( 0.7 );
+							res = player.PredictiveTakeEntityToInventory(FindInventoryLocationType.ATTACHMENT, item_in_hands);
+						}
+						if (res)
+						{
+							m_MainWidget.FindAnyWidget("Cursor").Show(false);
+							m_MainWidget.FindAnyWidget("hands_preview_root").SetAlpha(0.7);
 							return true;
 						}
 					}
@@ -1433,6 +1439,10 @@ class HandsContainer: Container
 						if (g_Game.IsLeftCtrlDown())
 							ShowActionMenu(selectedItem);
 						#endif
+						if (CanSplitEx(selectedItem))
+						{
+							selectedItem.OnRightClick();
+						}
 
 						break;
 				

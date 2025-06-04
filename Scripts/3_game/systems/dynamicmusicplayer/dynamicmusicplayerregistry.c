@@ -3,6 +3,7 @@ class DynamicMusicPlayerRegistry
 	ref map<EDynamicMusicPlayerCategory, ref DynamicMusicPlayerSettings> m_SettingsByCategory;
 	
 	ref array<ref DynamicMusicTrackData> m_TracksMenu;
+	ref array<ref DynamicMusicTrackData> m_TracksCredits;
 	ref array<ref DynamicMusicTrackData> m_TracksTime;
 	ref array<ref DynamicMusicTrackData> m_TracksLocationStatic;
 	ref array<ref DynamicMusicTrackData> m_TracksLocationStaticPrioritized;
@@ -22,6 +23,7 @@ class DynamicMusicPlayerRegistry
 		RegisterCategorySettings();
 
 		RegisterTracksMenu();
+		RegisterTracksCredits();
 		RegisterTracksTime();
 		RegisterTracksLocationStatic();
 		RegisterTracksLocationDynamic();
@@ -35,6 +37,7 @@ class DynamicMusicPlayerRegistry
 
 		RegisterGlobalSettings();
 		RegisterMenuSettings();
+		RegisterCreditsSettings();
 		RegisterTimeSettings();
 		RegisterLocationStaticSettings();
 		RegisterLocationDynamicSettings();
@@ -56,7 +59,20 @@ class DynamicMusicPlayerRegistry
 		settings.m_MinWaitTimeSeconds = 1.0;
 		settings.m_MaxWaitTimeSeconds = 3.0;
 		
+		settings.m_PreviousTrackFadeoutSeconds = 2.0;
+		
 		m_SettingsByCategory[EDynamicMusicPlayerCategory.MENU] = settings;
+	}
+
+	private void RegisterCreditsSettings()
+	{
+		DynamicMusicPlayerSettings settings = new DynamicMusicPlayerSettings();
+		settings.m_MinWaitTimeSeconds = 1.0;
+		settings.m_MaxWaitTimeSeconds = 3.0;
+		
+		settings.m_PreviousTrackFadeoutSeconds = 2.0;
+		
+		m_SettingsByCategory[EDynamicMusicPlayerCategory.CREDITS] = settings;
 	}
 	
 	private void RegisterTimeSettings()
@@ -102,6 +118,13 @@ class DynamicMusicPlayerRegistry
 		RegisterTrackMenu("Music_Menu_3_SoundSet");
 		RegisterTrackMenu("Music_Menu_4_SoundSet");
 	}
+//===============================================================================================================================================	
+	protected void RegisterTracksCredits()
+	{
+		m_TracksCredits = new array<ref DynamicMusicTrackData>();
+
+		RegisterTrackCredits("Music_Menu_subtitles_remake_SoundSet");
+	}
 //____________________________________________Day Time setup___________________________________________
 
 	protected void RegisterTracksTime()
@@ -116,6 +139,7 @@ class DynamicMusicPlayerRegistry
 		RegisterTrackTime("Music_time_day_5_SoundSet", DynamicMusicPlayerTimeOfDay.DAY);
 		RegisterTrackTime("Music_time_day_6_SoundSet", DynamicMusicPlayerTimeOfDay.DAY);
 		RegisterTrackTime("Music_time_day_7_SoundSet", DynamicMusicPlayerTimeOfDay.DAY);
+		RegisterTrackTime("Music_time_day_8_SoundSet", DynamicMusicPlayerTimeOfDay.DAY);
 		//NIGHT
 		RegisterTrackTime("Music_time_night_1_SoundSet", DynamicMusicPlayerTimeOfDay.NIGHT);
 		RegisterTrackTime("Music_time_night_2_SoundSet", DynamicMusicPlayerTimeOfDay.NIGHT);
@@ -155,6 +179,17 @@ class DynamicMusicPlayerRegistry
 		m_TracksMenu.Insert(track);
 	}
 	
+	//! --------------------------------------------------------------------------------
+	protected void RegisterTrackCredits(string soundSetName, bool hasPriority = false)
+	{
+		DynamicMusicTrackData track = new DynamicMusicTrackData();
+		track.m_Category 	= EDynamicMusicPlayerCategory.CREDITS;
+		track.m_SoundSet 	= soundSetName;
+		track.m_HasPriority	= hasPriority;
+
+		m_TracksCredits.Insert(track);
+	}
+	
 	protected void RegisterTrackTime(string soundSetName, int timeOfDay = DynamicMusicPlayerTimeOfDay.ANY)
 	{
 		DynamicMusicTrackData track = new DynamicMusicTrackData();
@@ -170,6 +205,7 @@ class DynamicMusicPlayerRegistry
 		DynamicMusicTrackData track = new DynamicMusicTrackData();
 		track.m_SoundSet 	= soundSetName;
 		track.m_TimeOfDay 	= timeOfDay;
+		track.m_Shape		= DynamicMusicLocationShape.BOX;
 		
 		track.InsertLocation(start, end);
 		
@@ -185,11 +221,12 @@ class DynamicMusicPlayerRegistry
 		}
 	}
 	
-	protected void RegisterTrackLocationStaticMultiRectangle(string soundSetName, ref array<ref TVectorArray> locationBoundaries, int timeOfDay = DynamicMusicPlayerTimeOfDay.ANY, bool runImmediately = false)
+	protected void RegisterTrackLocationStaticMultiRectangle(string soundSetName, array<ref TVectorArray> locationBoundaries, int timeOfDay = DynamicMusicPlayerTimeOfDay.ANY, bool runImmediately = false)
 	{
 		DynamicMusicTrackData track = new DynamicMusicTrackData();
 		track.m_SoundSet 	= soundSetName;
 		track.m_TimeOfDay 	= timeOfDay;
+		track.m_Shape		= DynamicMusicLocationShape.BOX;
 		
 		track.locationBoundaries = locationBoundaries;
 		
@@ -204,6 +241,27 @@ class DynamicMusicPlayerRegistry
 			m_TracksLocationStaticPrioritized.Insert(track);
 		}
 		
+	}
+	
+	protected void RegisterTrackLocationStaticPoints(string soundSetName, array<vector> vertices, int timeOfDay = DynamicMusicPlayerTimeOfDay.ANY, bool runImmediately = false)
+	{
+		DynamicMusicTrackData track = new DynamicMusicTrackData();
+		track.m_SoundSet 	= soundSetName;
+		track.m_TimeOfDay 	= timeOfDay;
+		track.m_Shape		= DynamicMusicLocationShape.POLYGON;
+		
+		track.vertices = vertices;
+		
+		if (!runImmediately)
+		{
+			track.m_Category = EDynamicMusicPlayerCategory.LOCATION_STATIC;
+			m_TracksLocationStatic.Insert(track);
+		}
+		else
+		{
+			track.m_Category = EDynamicMusicPlayerCategory.LOCATION_STATIC_PRIORITY;
+			m_TracksLocationStaticPrioritized.Insert(track);
+		}
 	}
 	
 	protected void RegisterTrackLocationDynamic(string soundSetName, int locationType = DynamicMusicLocationTypes.NONE, int timeOfDay = DynamicMusicPlayerTimeOfDay.ANY)

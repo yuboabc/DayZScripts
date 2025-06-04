@@ -104,6 +104,14 @@ class Input
 	proto native void	EnableMouseAndKeyboard(bool enable);
 	//! @return state of support mouse and keyboard (on consoles)
 	proto native bool	IsEnabledMouseAndKeyboard();
+	
+	//! Enable gamepad (on PC)
+	proto native void	EnableGamepad(bool enable);
+	//! @return state of support gamepad (on PC) 
+	// NOTE: not actually supported, just keeping naming consistent. 
+	// Required as we need to disable gamepad on windows when in the server browser to prevent 
+	// the client from freezing on gamepad queries while refreshing the server list .
+	proto native bool	IsEnabledGamepad();
 	/*!
 	@return state of support mouse and keyboard. If client playing on server 
 	where mouse and keyboard is disabled, then return false. (on consoles)
@@ -252,6 +260,9 @@ class Input
 	//! callback that is fired when a new gamepad is connected
 	void OnGamepadConnected(int gamepad)
 	{
+		if (!g_Game)
+			return;
+		
 		#ifdef PLATFORM_PS4
 		BiosUser user;
 		GetGamepadUser( gamepad, user );
@@ -276,6 +287,9 @@ class Input
 	//! callback that is fired when gamepad is disconnected
 	void OnGamepadDisconnected(int gamepad)
 	{
+		if (!g_Game)
+			return;
+		
 		if (IsInactiveGamepadOrUserSelected(gamepad))
 		{
 			UpdateConnectedInputDeviceList();
@@ -295,6 +309,9 @@ class Input
 	//! callback that is fired when identification was requested
 	void OnGamepadIdentification(int gamepad)
 	{
+		if (!g_Game)
+			return;
+		
 		if (gamepad > -1)
 		{
 			DayZLoadState state = g_Game.GetLoadState();
@@ -315,7 +332,7 @@ class Input
 	}
 	
 	int GetUserGamepad( BiosUser user )
-	{
+	{		
 		array<int> gamepads = new array<int>;
 		GetGamepadList( gamepads );
 		for( int i = 0; i < gamepads.Count(); i++ )
@@ -330,6 +347,12 @@ class Input
 	
 	bool IsInactiveGamepadOrUserSelected( int gamepad = -1 )
 	{
+		if (!g_Game)
+			return false;
+		
+		#ifdef PLATFORM_CONSOLE
+		if (!GetGame().GetUserManager())
+			return false;
 		#ifdef PLATFORM_XBOX
 		return !IsActiveGamepadSelected();
 		#endif
@@ -338,6 +361,7 @@ class Input
 		GetGamepadUser( gamepad, user );
 		return (user == GetGame().GetUserManager().GetSelectedUser());
 		#endif
+		#endif
 		return false;
 	}
 	
@@ -345,6 +369,9 @@ class Input
 	//! does not fire on PC - mouse/keyboard assumed to always be connected
 	void OnMouseConnected()
 	{
+		if (!g_Game)
+			return;
+		
 		UpdateConnectedInputDeviceList();
 		if (!g_Game.IsLoading() && GetGame().GetMission())
 		{
@@ -360,6 +387,9 @@ class Input
 	//! does not fire on PC - mouse/keyboard assumed to always be connected
 	void OnMouseDisconnected()
 	{
+		if (!g_Game)
+			return;
+		
 		UpdateConnectedInputDeviceList();
 		if (!g_Game.IsLoading() && GetGame().GetMission())
 		{
@@ -375,6 +405,9 @@ class Input
 	//! does not fire on PC - mouse/keyboard assumed to always be connected
 	void OnKeyboardConnected()
 	{
+		if (!g_Game)
+			return;
+		
 		UpdateConnectedInputDeviceList();
 		if (!g_Game.IsLoading() && GetGame().GetMission())
 		{
@@ -390,6 +423,9 @@ class Input
 	//! does not fire on PC - mouse/keyboard assumed to always be connected
 	void OnKeyboardDisconnected()
 	{
+		if (!g_Game)
+			return;
+		
 		UpdateConnectedInputDeviceList();
 		if (!g_Game.IsLoading() && GetGame().GetMission())
 		{
@@ -404,6 +440,9 @@ class Input
 	//! called from code on different input device use
 	void OnLastInputDeviceChanged(EInputDeviceType inputDevice)
 	{
+		if (!g_Game)
+			return;
+		
 		if (GetGame().GetMission())
 		{
 			GetGame().GetMission().GetOnInputDeviceChanged().Invoke(inputDevice);

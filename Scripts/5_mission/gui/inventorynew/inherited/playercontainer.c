@@ -2,8 +2,8 @@ class PlayerContainer: CollapsibleContainer
 {
 	protected ref AttachmentsGroupContainer		m_PlayerAttachmentsContainer;
 	protected ref map<int, SlotsIcon>			m_InventorySlots;
-	protected ref map<EntityAI, ref Container>	m_ShowedItems = new ref map<EntityAI, ref Container>;
-	protected ref map<int, ref Container>		m_ShowedItemsIDs = new ref map<int, ref Container>;
+	protected ref map<EntityAI, ref Container>	m_ShowedItems = new map<EntityAI, ref Container>;
+	protected ref map<int, ref Container>		m_ShowedItemsIDs = new map<int, ref Container>;
 	protected PlayerBase						m_Player;
 	
 	protected const	int							HEADER_INDEX_OFFSET = 2;
@@ -33,8 +33,17 @@ class PlayerContainer: CollapsibleContainer
 
 	void PlayerContainer( LayoutHolder parent, int sort = -1 )
 	{
-		m_InventorySlots = new ref map<int, SlotsIcon>;
+		m_InventorySlots = new map<int, SlotsIcon>;
 		m_PlayerAttachmentsContainer = new AttachmentsGroupContainer(this);
+		
+		#ifndef PLATFORM_CONSOLE
+		RightArea rightArea = RightArea.Cast(GetParent());
+		if (rightArea)
+		{
+			rightArea.GetSlotsHeader().AddChild(GetHeader().GetRootWidget());
+			rightArea.GetSlotsArea().AddChild(m_PlayerAttachmentsContainer.GetRootWidget());
+		}
+		#endif
 		
 		m_PlayerAttachmentsContainer.SetHeader(GetHeader());
 		m_CollapsibleHeader.SetName( "#container_inventory" );
@@ -503,40 +512,6 @@ class PlayerContainer: CollapsibleContainer
 	{
 		PluginRecipesManager plugin_recipes_manager = PluginRecipesManager.Cast( GetPlugin( PluginRecipesManager ) );
 		return plugin_recipes_manager.GetValidRecipes( ItemBase.Cast( entity1 ), ItemBase.Cast( entity2 ), null, PlayerBase.Cast( GetGame().GetPlayer() ) );
-	}
-	
-	override bool SplitItem()
-	{
-		if (CanSplit())
-		{
-			if ( GetFocusedContainer().IsInherited( ContainerWithCargo ) || GetFocusedContainer().IsInherited( ContainerWithCargoAndAttachments ) )
-			{
-				return GetFocusedContainer().SplitItem();
-			}
-		}
-		
-		return false;
-	}
-	
-	override bool EquipItem()
-	{
-		if (CanEquip())
-		{		
-			if ( GetFocusedContainer().IsInherited( ContainerWithCargo ) || GetFocusedContainer().IsInherited( ContainerWithCargoAndAttachments ) )
-			{
-				return GetFocusedContainer().EquipItem();
-			}
-			else
-			{
-				EntityAI item = GetFocusedItem();
-				if( item )
-				{
-					GetGame().GetPlayer().PredictiveTakeEntityToInventory( FindInventoryLocationType.ATTACHMENT, item );
-					return true;
-				}
-			}
-		}
-		return false;
 	}
 	
 	override bool TransferItem()

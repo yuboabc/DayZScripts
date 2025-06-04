@@ -64,13 +64,12 @@ class StaminaConsumers
 
 	bool HasEnoughStaminaFor(EStaminaConsumers consumer, float curStamina, bool isDepleted, float cap)
 	{
-		if ( m_StaminaConsumers && m_StaminaConsumers.Contains(consumer) )
+		StaminaConsumer sc;
+		if (m_StaminaConsumers && m_StaminaConsumers.Find(consumer, sc))
 		{
-			StaminaConsumer sc = m_StaminaConsumers.Get(consumer);
-			
-			if ( consumer != EStaminaConsumers.SPRINT )
+			if (consumer != EStaminaConsumers.SPRINT)
 			{
-				if ( (isDepleted || (curStamina < sc.GetDrainThreshold()/* && curStamina < cap*/)) )
+				if (isDepleted || (curStamina < sc.GetDrainThreshold()))
 				{
 					sc.SetState(false);
 					return false;
@@ -78,9 +77,9 @@ class StaminaConsumers
 			}
 			else
 			{
-				if ( !isDepleted )
+				if (!isDepleted)
 				{
-					if ( sc.GetState() ) 
+					if (sc.GetState())
 					{
 						sc.SetState(true);
 						return true;
@@ -93,7 +92,7 @@ class StaminaConsumers
 				}
 			}
 
-			if ( curStamina > sc.GetDrainThreshold() || curStamina == cap ) //Sometimes player can't go up to drain threshold
+			if (curStamina > sc.GetDrainThreshold() || curStamina == cap) //Sometimes player can't go up to drain threshold
 			{
 				sc.SetState(true);
 				return true;
@@ -105,11 +104,10 @@ class StaminaConsumers
 	
 	bool HasEnoughStaminaToStart(EStaminaConsumers consumer, float curStamina, bool isDepleted, float cap)
 	{
-		if ( m_StaminaConsumers && m_StaminaConsumers.Contains(consumer) )
+		StaminaConsumer sc;
+		if (m_StaminaConsumers && m_StaminaConsumers.Find(consumer, sc))
 		{
-			StaminaConsumer sc = m_StaminaConsumers.Get(consumer);
-			
-			if ( (isDepleted || (curStamina < sc.GetActivationThreshold() && curStamina < cap)) )
+			if ((isDepleted || (curStamina < sc.GetActivationThreshold() && curStamina < cap)))
 			{
 				sc.SetState(false);
 				return false;
@@ -302,6 +300,7 @@ class StaminaHandler
 		m_State 						= new HumanMovementState();
 		m_Player 						= player;
 		m_Stamina 						= CfgGameplayHandler.GetStaminaMax(); 
+		m_StaminaSynced 				= CfgGameplayHandler.GetStaminaMax(); 
 		m_StaminaCap 					= CfgGameplayHandler.GetStaminaMax();
 		m_StaminaDepletion 				= 0;
 		m_StaminaDepletionMultiplier 	= 1;
@@ -427,10 +426,12 @@ class StaminaHandler
 		if (m_StaminaDisabled)
 			return;
 		#endif
+
 		if (m_Player)
 		{
+			bool isServerOrSingleplayer = GetGame().IsServer() || !GetGame().IsMultiplayer();
 			// Calculates actual max stamina based on player's load
-			if (GetGame().IsServer() || !GetGame().IsMultiplayer())
+			if (isServerOrSingleplayer)
 			{
 				//! gets the actual players load
 				m_PlayerLoad = m_Player.GetWeightEx();
@@ -486,7 +487,7 @@ class StaminaHandler
 			m_Stamina = Math.Max(0, Math.Min((m_Stamina + temp), m_StaminaCap));
 			m_Stamina = m_Stamina - m_StaminaDepletion;
 
-			if (GetGame().IsServer() || !GetGame().IsMultiplayer())
+			if (isServerOrSingleplayer)
 			{
 				m_Player.GetStatStamina().Set(m_Stamina);
 				m_Time += deltaT;
@@ -867,7 +868,7 @@ class StaminaHandler
 		}
 		else
 		{
-			timer = new ref Timer;
+			timer = new Timer;
 			m_TimerMap.Set(modifier,timer);
 		}
 		timer.Run(time, this, "ResetCooldown",  new Param1<int>( modifier ));
@@ -896,12 +897,12 @@ class StaminaHandler
 	// ---------------------------------------------------
 	bool HasEnoughStaminaFor(EStaminaConsumers consumer)
 	{
-		return m_StaminaConsumers.HasEnoughStaminaFor(consumer, m_Stamina, m_StaminaDepleted, m_StaminaCap);
+		return m_StaminaConsumers.HasEnoughStaminaFor(consumer, m_StaminaSynced, m_StaminaDepleted, m_StaminaCap);
 	}
 	
 	bool HasEnoughStaminaToStart(EStaminaConsumers consumer)
 	{
-		return m_StaminaConsumers.HasEnoughStaminaToStart(consumer, m_Stamina, m_StaminaDepleted, m_StaminaCap);
+		return m_StaminaConsumers.HasEnoughStaminaToStart(consumer, m_StaminaSynced, m_StaminaDepleted, m_StaminaCap);
 	}
 
 	void SetStamina(float stamina_value)
@@ -967,7 +968,7 @@ class StaminaHandler
 		return m_StaminaRecoveryMultiplier;
 	}
 	
-	void DepleteStamina(EStaminaModifiers modifier, float dT = -1)
+	void DepleteStaminaEx(EStaminaModifiers modifier, float dT = -1, float coef = 1.0)
 	{
 		#ifdef DIAG_DEVELOPER
 		if (m_StaminaDisabled)
@@ -986,13 +987,13 @@ class StaminaHandler
 				{
 					dT = 1;
 				}
-				m_StaminaDepletion = m_StaminaDepletion + sm.GetMaxValue() * dT;
+				m_StaminaDepletion += sm.GetMaxValue() * dT * coef;
 
 				break;
 			
 			case m_StaminaModifiers.RANDOMIZED:
 				val = Math.RandomFloat(sm.GetMinValue(), sm.GetMaxValue());
-				m_StaminaDepletion = m_StaminaDepletion + val;
+				m_StaminaDepletion += val * coef;
 
 				break;
 			
@@ -1005,7 +1006,7 @@ class StaminaHandler
 				}
 				valueProgress = Math.Clamp((current_time - sm.GetStartTime())/sm.GetDurationAdjusted(), 0, 1 );
 				val = Math.Lerp(sm.GetMinValue(), sm.GetMaxValue(), valueProgress);
-				m_StaminaDepletion = m_StaminaDepletion + val;
+				m_StaminaDepletion += val * coef;
 			
 				break;
 			
@@ -1036,17 +1037,16 @@ class StaminaHandler
 					val = Math.Pow(smex.GetBaseValue(),exp) + smex.GetBaseValue() - 1;
 				}
 				
-				m_StaminaDepletion = m_StaminaDepletion + val;
-				m_StaminaDepletion *= smex.GetMultiplier();
+				m_StaminaDepletion += val * smex.GetMultiplier() * coef;
 			
 				break;
 		}
 
 		//! run cooldown right after depletion
 		SetCooldown(sm.GetCooldown(),modifier);
+		
+		m_StaminaDepletion *= m_StaminaDepletionMultiplier;
 		m_StaminaDepletion = Math.Clamp(m_StaminaDepletion, 0, CfgGameplayHandler.GetStaminaMax());
-
-		m_StaminaDepletion = m_StaminaDepletion * m_StaminaDepletionMultiplier;
 	}
 	
 	#ifdef DIAG_DEVELOPER
@@ -1055,4 +1055,13 @@ class StaminaHandler
 		m_StaminaDisabled = value;
 	}
 	#endif
+	
+	////////////////////////////
+	//Deprecated code playpen//
+	//////////////////////////
+	//! Deprecated
+	void DepleteStamina(EStaminaModifiers modifier, float dT = -1)
+	{
+		DepleteStaminaEx(modifier,dT);
+	}
 }

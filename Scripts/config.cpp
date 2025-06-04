@@ -2438,14 +2438,14 @@ class CfgSlots
 	class Slot_Chemlight
 	{
 		name="Chemlight";
-		displayName="#STR_CfgChemlight0";
-		ghostIcon="set:dayz_inventory image:chemlight";
+		displayName="#STR_CfgStrap0";
+		ghostIcon="set:dayz_inventory image:Backpack_Strap_1";
 	};
 	class Slot_WalkieTalkie
 	{
 		name="WalkieTalkie";
-		displayName="#STR_CfgWalkieTalkie0";
-		ghostIcon="set:dayz_inventory image:walkietalkie";
+		displayName="#STR_CfgStrap0";
+		ghostIcon="set:dayz_inventory image:Backpack_Strap_2";
 	};
 	class Slot_NVG
 	{
@@ -2500,6 +2500,12 @@ class CfgSlots
 		name="VestGrenadeD";
 		displayName="#STR_CfgVestGrenade0";
 		ghostIcon="set:dayz_inventory image:grenade";
+	};
+	class Slot_Backpack_1
+	{
+		name="Backpack_1";
+		displayName="#STR_CfgTool0";
+		ghostIcon="set:dayz_inventory image:Backpack_1";
 	};
 	class Slot_GasMaskFilter
 	{

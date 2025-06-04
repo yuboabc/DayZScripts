@@ -434,6 +434,12 @@ class EmoteSurrender extends EmoteBase
 		m_HideItemInHands = false;
 	}
 	
+	override bool EmoteCondition(int stancemask)
+	{
+		Transport transportEnt; //standing on a Transport-type object...
+		return !m_Player.PhysicsGetLinkedEntity() && !Class.CastTo(transportEnt,m_Player.PhysicsGetFloorEntity());
+	}
+	
 	override bool DetermineOverride(out int callback_ID, out int stancemask, out bool is_fullbody)
 	{
 		stancemask = DayZPlayerConstants.STANCEMASK_ALL;
@@ -442,16 +448,13 @@ class EmoteSurrender extends EmoteBase
 	
 	override bool EmoteStartOverride(typename callbacktype, int id, int mask, bool fullbody)
 	{
-		bool surrendered = m_Player.GetEmoteManager().m_IsSurrendered;
-		if (!surrendered)
+		bool surrenderTargetState = !m_Player.GetEmoteManager().m_IsSurrendered;
+		if (!surrenderTargetState && m_Player.GetItemInHands())
 		{
-			m_Player.GetEmoteManager().PlaySurrenderInOut(true);
+			m_Player.GetItemInHands().DeleteSafe();
 		}
-		else
-		{
-			if (m_Player.GetItemInHands())
-				m_Player.GetItemInHands().DeleteSafe();
-		}
+		
+		m_Player.GetEmoteManager().PlaySurrenderInOut(surrenderTargetState);
 		
 		return true;
 	}

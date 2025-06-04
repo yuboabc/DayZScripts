@@ -19,6 +19,11 @@ class VolcanicTrigger : EffectTrigger
 		#endif
 	}
 	
+	override string GetDisplayName()
+	{
+		return "#STR_volcanicarea";
+	}
+	
 	override void EEDelete( EntityAI parent )
 	{
 		if (m_VaporParticle)
@@ -78,7 +83,7 @@ class VolcanicTrigger : EffectTrigger
 	protected void SpawnVaporEffect()
 	{
 		vector pos = GetPosition();
-		pos[1] = GetGame().SurfaceY(pos[0], pos[2]) + 0.5;
+		pos[1] = GetGame().SurfaceY(pos[0], pos[2]) + 0.5;	// Snap to terrain surface
 		
 		m_VaporParticle = ParticleManager.GetInstance().PlayInWorld(ParticleList.VOLCANO, pos);
 		

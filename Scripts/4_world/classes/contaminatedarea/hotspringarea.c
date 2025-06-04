@@ -5,6 +5,13 @@ class HotSpringArea : EffectArea
 	protected ref UniversalTemperatureSourceSettings m_UTSSettings;
 	protected ref UniversalTemperatureSourceLambdaConstant m_UTSLConstant;
 	
+	override void DeferredInit()
+	{
+		super.DeferredInit();
+		
+		InitZone();		
+	}
+
 	override void InitZoneServer()
 	{
 		super.InitZoneServer();
@@ -12,8 +19,6 @@ class HotSpringArea : EffectArea
 		m_UTSSettings 							= new UniversalTemperatureSourceSettings();
 		m_UTSSettings.m_Updateable				= true;
 		m_UTSSettings.m_UpdateInterval			= 1;
-		m_UTSSettings.m_TemperatureMin			= 10;
-		m_UTSSettings.m_TemperatureMax			= 60;
 		m_UTSSettings.m_TemperatureItemCap 		= GameConstants.ITEM_TEMPERATURE_NEUTRAL_ZONE_MIDDLE;
 		m_UTSSettings.m_TemperatureCap			= 24;
 		m_UTSSettings.m_RangeFull				= 1;
@@ -25,7 +30,7 @@ class HotSpringArea : EffectArea
 		m_UTSource 		= new UniversalTemperatureSource(this, m_UTSSettings, m_UTSLConstant);
 		
 		if ( m_TriggerType != "" )
-			CreateTrigger( m_Position, m_Radius );
+			CreateTrigger(m_PositionTrigger, m_Radius);
 		
 		m_UTSource.SetActive(true);
 	}

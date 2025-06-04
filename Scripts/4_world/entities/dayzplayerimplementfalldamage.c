@@ -139,15 +139,12 @@ class DayZPlayerImplementFallDamage
 				AttachBleedingToZonesByHeight(playerBase);
 				DamageAttachedGear(playerBase);
 				playerBase.DamageAllLegs(BROKENLEGS_HEALTH_DAMAGE_MAX * m_FallDamageData.m_BrokenLegsCoef);
-			}
-			
-			vector posMS = m_Player.WorldToModel(m_Player.GetPosition());
-
-			m_Player.ProcessDirectDamage(DamageType.CUSTOM, m_Player, "", FALL_DAMAGE_AMMO_HEALTH, posMS, m_FallDamageData.m_HealthCoef);
-			m_Player.ProcessDirectDamage(DamageType.CUSTOM, m_Player, "", FALL_DAMAGE_AMMO_SHOCK, posMS, m_FallDamageData.m_ShockCoef);
-
-			if (playerBase)
 				playerBase.ForceUpdateInjuredState();
+			}
+
+			m_Player.ProcessDirectDamage(DamageType.CUSTOM, m_Player, "", FALL_DAMAGE_AMMO_HEALTH, vector.Zero, m_FallDamageData.m_HealthCoef);
+			m_Player.ProcessDirectDamage(DamageType.CUSTOM, m_Player, "", FALL_DAMAGE_AMMO_SHOCK, vector.Zero, m_FallDamageData.m_ShockCoef);
+				
 		}
 	}
 	
@@ -206,15 +203,15 @@ class DayZPlayerImplementFallDamage
 	{
 		EntityAI gloves = pPlayer.FindAttachmentBySlotName("Gloves");
 		if (gloves)
-			gloves.ProcessDirectDamage(DT_CUSTOM, pPlayer, "", FALL_DAMAGE_AMMO_HEALTH_OTHER_ATTACHMENTS, gloves.WorldToModel(gloves.GetPosition()), m_FallDamageData.m_GlovesHealthCoef);
+			gloves.ProcessDirectDamage(DamageType.CUSTOM, pPlayer, "", FALL_DAMAGE_AMMO_HEALTH_OTHER_ATTACHMENTS, gloves.WorldToModel(gloves.GetPosition()), m_FallDamageData.m_GlovesHealthCoef);
 
 		EntityAI shoes = pPlayer.FindAttachmentBySlotName("Feet");
 		if (shoes)
-			shoes.ProcessDirectDamage(DT_CUSTOM, pPlayer, "", FALL_DAMAGE_AMMO_HEALTH_OTHER_ATTACHMENTS, shoes.WorldToModel(shoes.GetPosition()), m_FallDamageData.m_ShoesHealthCoef);
+			shoes.ProcessDirectDamage(DamageType.CUSTOM, pPlayer, "", FALL_DAMAGE_AMMO_HEALTH_OTHER_ATTACHMENTS, shoes.WorldToModel(shoes.GetPosition()), m_FallDamageData.m_ShoesHealthCoef);
 		
 		EntityAI pants = pPlayer.FindAttachmentBySlotName("Legs");
 		if (pants)
-			pants.ProcessDirectDamage(DT_CUSTOM, pPlayer, "", FALL_DAMAGE_AMMO_HEALTH_ATTACHMENT, pants.WorldToModel(pants.GetPosition()), m_FallDamageData.m_PantsHealthCoef);
+			pants.ProcessDirectDamage(DamageType.CUSTOM, pPlayer, "", FALL_DAMAGE_AMMO_HEALTH_ATTACHMENT, pants.WorldToModel(pants.GetPosition()), m_FallDamageData.m_PantsHealthCoef);
 	}
 
 #ifdef DIAG_DEVELOPER
@@ -241,7 +238,7 @@ class DayZPlayerImplementFallDamage
 			case 2:
 				return "MEDIUM";
 			case 3:
-				return "HEAVY":
+				return "HEAVY";
 		}
 		
 		return "NONE";
@@ -250,7 +247,7 @@ class DayZPlayerImplementFallDamage
 	private void PreloadAmmoTypeData()
 	{
 		if (m_AmmoTypeData == null)
-			m_AmmoTypeData = new ref map<string, float>();
+			m_AmmoTypeData = new map<string, float>();
 		
 		m_AmmoTypeData.Insert(FALL_DAMAGE_AMMO_HEALTH, GetValuesFromAmmoType(FALL_DAMAGE_AMMO_HEALTH)[0]);
 		m_AmmoTypeData.Insert(FALL_DAMAGE_AMMO_SHOCK, GetValuesFromAmmoType(FALL_DAMAGE_AMMO_SHOCK)[2]);

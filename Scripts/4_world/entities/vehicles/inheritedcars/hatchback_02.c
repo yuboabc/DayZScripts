@@ -12,7 +12,8 @@ class Hatchback_02 extends CarScript
 		m_EngineStartBattery	= "Hatchback_02_engine_failed_start_battery_SoundSet";
 		m_EngineStartPlug		= "Hatchback_02_engine_failed_start_sparkplugs_SoundSet";
 		m_EngineStartFuel		= "Hatchback_02_engine_failed_start_fuel_SoundSet";
-		m_EngineStopFuel		= "offroad_engine_stop_fuel_SoundSet";
+		m_EngineStop 			= "Hatchback_02_engine_stop_SoundSet";
+		m_EngineStopFuel		= "Hatchback_02_engine_stop_fuel_SoundSet";
 		
 		m_CarDoorOpenSound		= "offroad_door_open_SoundSet";
 		m_CarDoorCloseSound		= "offroad_door_close_SoundSet";
@@ -31,8 +32,6 @@ class Hatchback_02 extends CarScript
 		{
  			m_UTSSettings 						= new UniversalTemperatureSourceSettings();
 			m_UTSSettings.m_ManualUpdate 		= true;
-			m_UTSSettings.m_TemperatureMin		= 0;
-			m_UTSSettings.m_TemperatureMax		= 30;
 			m_UTSSettings.m_TemperatureItemCap 	= GameConstants.ITEM_TEMPERATURE_NEUTRAL_ZONE_MIDDLE;
 			m_UTSSettings.m_TemperatureCap		= 0;
 			m_UTSSettings.m_RangeFull			= 0.5;
