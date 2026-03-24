@@ -1,6 +1,116 @@
 // QR Code Generator - Version 1, Byte mode, Error Correction Level L
 // Generates a 21x21 QR code matrix from a string input (max 17 ASCII chars)
 
+// URL Encoder - Supports ASCII and multi-byte characters (Chinese, etc.)
+// Converts Unicode code points to UTF-8 percent-encoded strings
+
+class UrlEncoder
+{
+	static const string HEX_CHARS = "0123456789ABCDEF";
+
+	// Check if input contains any non-ASCII characters (Chinese, etc.)
+	static bool HasNonAscii(string input)
+	{
+		int i;
+		for (i = 0; i < input.Length(); i++)
+		{
+			int code = input.Get(i).ToAscii();
+			if (code > 127)
+				return true;
+		}
+		return false;
+	}
+
+	// URL-encode the input string
+	// Unreserved chars (A-Z, a-z, 0-9, -, _, ., ~) pass through unchanged
+	// All other chars are percent-encoded using UTF-8 byte representation
+	static string Encode(string input)
+	{
+		string result = "";
+		int i;
+
+		for (i = 0; i < input.Length(); i++)
+		{
+			string ch = input.Get(i);
+			int code = ch.ToAscii();
+
+			if (IsUnreserved(code))
+			{
+				result += ch;
+			}
+			else if (code <= 0x7F)
+			{
+				// Single-byte ASCII (space, &, =, ?, etc.)
+				result += ByteToHex(code);
+			}
+			else if (code <= 0x7FF)
+			{
+				// 2-byte UTF-8 (Latin extended, etc.)
+				int b1 = 0xC0 | (code >> 6);
+				int b2 = 0x80 | (code & 0x3F);
+				result += ByteToHex(b1);
+				result += ByteToHex(b2);
+			}
+			else if (code <= 0xFFFF)
+			{
+				// 3-byte UTF-8 (Chinese/Japanese/Korean characters)
+				int b1 = 0xE0 | (code >> 12);
+				int b2 = 0x80 | ((code >> 6) & 0x3F);
+				int b3 = 0x80 | (code & 0x3F);
+				result += ByteToHex(b1);
+				result += ByteToHex(b2);
+				result += ByteToHex(b3);
+			}
+			else
+			{
+				// 4-byte UTF-8 (emoji, rare characters)
+				int b1 = 0xF0 | (code >> 18);
+				int b2 = 0x80 | ((code >> 12) & 0x3F);
+				int b3 = 0x80 | ((code >> 6) & 0x3F);
+				int b4 = 0x80 | (code & 0x3F);
+				result += ByteToHex(b1);
+				result += ByteToHex(b2);
+				result += ByteToHex(b3);
+				result += ByteToHex(b4);
+			}
+		}
+
+		return result;
+	}
+
+	// Encode only if non-ASCII characters are present, otherwise return as-is
+	static string EncodeIfNeeded(string input)
+	{
+		if (HasNonAscii(input))
+			return Encode(input);
+		return input;
+	}
+
+	// Convert a byte (0-255) to "%XX" hex format
+	protected static string ByteToHex(int byte_val)
+	{
+		string hi = HEX_CHARS.Get((byte_val >> 4) & 0x0F);
+		string lo = HEX_CHARS.Get(byte_val & 0x0F);
+		return "%" + hi + lo;
+	}
+
+	// RFC 3986 unreserved characters: A-Z, a-z, 0-9, -, _, ., ~
+	protected static bool IsUnreserved(int code)
+	{
+		if (code >= 65 && code <= 90)
+			return true;  // A-Z
+		if (code >= 97 && code <= 122)
+			return true;  // a-z
+		if (code >= 48 && code <= 57)
+			return true;  // 0-9
+		if (code == 45 || code == 95 || code == 46 || code == 126)
+			return true;  // - _ . ~
+		return false;
+	}
+};
+
+// ---------------------------------------------------------------------------
+
 class GaloisField
 {
 	static int s_Initialized = 0;
