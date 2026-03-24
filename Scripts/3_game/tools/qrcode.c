@@ -143,6 +143,26 @@ class QRCodeGenerator
 		return QR_SIZE;
 	}
 
+	// Returns 2D array [row][col], 0=white, 1=black
+	static array<ref array<int>> Generate2D(string input)
+	{
+		array<int> flat = Generate(input);
+		array<ref array<int>> matrix2D = new array<ref array<int>>;
+
+		int row, col;
+		for (row = 0; row < QR_SIZE; row++)
+		{
+			array<int> rowData = new array<int>;
+			for (col = 0; col < QR_SIZE; col++)
+			{
+				rowData.Insert(flat.Get(row * QR_SIZE + col));
+			}
+			matrix2D.Insert(rowData);
+		}
+
+		return matrix2D;
+	}
+
 	static void DebugPrint(array<int> matrix)
 	{
 		int row, col;
