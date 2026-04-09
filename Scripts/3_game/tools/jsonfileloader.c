@@ -39,7 +39,7 @@ class JsonFileLoader<Class T>
 		}
 	}
 	
-	static bool SaveFile(string filename, T data, out string errorMessage)
+	static bool SaveFile(string filename, T data, out string errorMessage, bool prettyPrint = true)
 	{
 		string fileContent;
 
@@ -47,7 +47,7 @@ class JsonFileLoader<Class T>
 			m_Serializer = new JsonSerializer();
 
 		string makeDataError;
-		if (!MakeData(data, fileContent, makeDataError, true))
+		if (!MakeData(data, fileContent, makeDataError, prettyPrint))
 		{
 			errorMessage = string.Format("Cannot save data to file \"%1\", %2", filename, makeDataError);
 			return false;
@@ -64,6 +64,15 @@ class JsonFileLoader<Class T>
 		CloseFile(handle);
 
 		return true;
+	}
+	
+	static bool CompressFile(string filename, out string errorMessage)
+	{
+		T data;
+		if (!LoadFile(filename, data, errorMessage))
+			return false;
+		
+		return SaveFile(filename, data, errorMessage, false);
 	}
 	
 	static bool LoadData(string string_data, out T data, out string errorMessage)
@@ -131,13 +140,13 @@ class JsonFileLoader<Class T>
 	}
 
 	//! use JsonFileLoader::SaveFile instead
-	static void JsonSaveFile(string filename, T data)
+	static void JsonSaveFile(string filename, T data, bool prettyPrint = true)
 	{
 		string file_content;
 		if (!m_Serializer)
 			m_Serializer = new JsonSerializer();
 		
-		m_Serializer.WriteToString(data, true, file_content);
+		m_Serializer.WriteToString(data, prettyPrint, file_content);
 		
 		FileHandle handle = OpenFile(filename, FileMode.WRITE);
 		if (handle == 0)
